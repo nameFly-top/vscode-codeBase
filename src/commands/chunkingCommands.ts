@@ -41,17 +41,33 @@ export function registerChunkingCommands(context: vscode.ExtensionContext) {
         }
     });
 
-    // 注册查看索引缓存统计命令
+    // 注册索引状态检查命令
+    const checkIndexStatusCommand = vscode.commands.registerCommand('test-electron-treesitter.checkIndexStatus', async () => {
+        try {
+            await chunkingService.checkIndexCompletionStatus();
+        } catch (error) {
+            console.error('[CodeChunker] 索引状态检查错误:', error);
+            vscode.window.showErrorMessage(`索引状态检查失败: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    });
+
+    // 注册缓存统计命令
     const cacheStatsCommand = vscode.commands.registerCommand('test-electron-treesitter.cacheStats', async () => {
         try {
             const stats = await chunkingService.getCacheStats();
             if (stats) {
+                const expiredWarning = stats.expiredRecords > 0 ? `\n⚠️ 过期记录: ${stats.expiredRecords} 条` : '';
+                const nextCleanupInfo = stats.nextCleanup ? `\n⏰ 下次清理: ${stats.nextCleanup.toLocaleString()}` : '';
+                
                 vscode.window.showInformationMessage(
-                    `索引缓存统计:\n` +
+                    `📊 索引缓存统计:\n` +
                     `- 缓存文件数: ${stats.totalFiles}\n` +
                     `- 缓存大小: ${stats.totalSize}\n` +
+                    `- 压缩模式: ${stats.compressionEnabled ? '已启用' : '未启用'}\n` +
                     `- 最早记录: ${stats.oldestRecord ? stats.oldestRecord.toLocaleString() : '无'}\n` +
-                    `- 最新记录: ${stats.newestRecord ? stats.newestRecord.toLocaleString() : '无'}`
+                    `- 最新记录: ${stats.newestRecord ? stats.newestRecord.toLocaleString() : '无'}` +
+                    expiredWarning +
+                    nextCleanupInfo
                 );
             } else {
                 vscode.window.showInformationMessage('索引缓存未启用');
@@ -128,6 +144,25 @@ export function registerChunkingCommands(context: vscode.ExtensionContext) {
         }
     });
 
-    context.subscriptions.push(chunkCodeCommand, checkProgressCommand, clearCacheCommand, cacheStatsCommand, clearIndexCacheCommand, networkPerformanceCommand, clearNetworkDataCommand);
+    // 注册手动清理缓存命令
+    const manualCleanupCommand = vscode.commands.registerCommand('test-electron-treesitter.manualCleanup', async () => {
+        try {
+            const result = await chunkingService.manualCleanupCache();
+            if (result) {
+                vscode.window.showInformationMessage(
+                    `缓存清理完成:\n` +
+                    `- 清除记录: ${result.removed} 条\n` +
+                    `- 节省空间: ${result.size}`
+                );
+            } else {
+                vscode.window.showInformationMessage('缓存服务未启用');
+            }
+        } catch (error) {
+            console.error('[CodeChunker] 手动清理缓存失败:', error);
+            vscode.window.showErrorMessage(`手动清理缓存失败: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    });
+
+    context.subscriptions.push(chunkCodeCommand, checkProgressCommand, clearCacheCommand, checkIndexStatusCommand, cacheStatsCommand, clearIndexCacheCommand, networkPerformanceCommand, clearNetworkDataCommand, manualCleanupCommand);
     console.log('[CodeChunker] 代码分块命令已注册');
 } 

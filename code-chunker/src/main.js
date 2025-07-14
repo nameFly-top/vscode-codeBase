@@ -10,6 +10,7 @@ const ProgressTracker = require('./progressTracker');
 const MerkleTree = require('./utils/merkleTree');
 const VectorManager = require('./vectorManager');
 const PerformanceAnalyzer = require('./utils/performanceAnalyzer');
+const { createCacheSystem, createPresetConfig } = require('./cache');
 
 class CodeChunker {
     constructor(userConfig) {
@@ -22,6 +23,16 @@ class CodeChunker {
         
         // 初始化性能分析器
         this.performanceAnalyzer = new PerformanceAnalyzer();
+        
+        // 初始化缓存系统
+        const cacheMode = this.config.environment || 'development';
+        const cacheConfig = {
+            ...createPresetConfig(cacheMode),
+            ...(this.config.cache || {}),
+            dbPath: this.config.cache?.dbPath || path.join(process.cwd(), 'cache', `${cacheMode}-index.db`)
+        };
+        this.cacheSystem = createCacheSystem(cacheConfig);
+        this.log(`🗃️ 缓存系统已创建 (${cacheMode}模式)`);
         
         // 初始化 VectorManager（只有在明确启用时才初始化）
         if (this.config.vectorManager?.enabled === true) {
@@ -81,6 +92,11 @@ class CodeChunker {
             
             this.log(`Starting Code Chunker v${this.version} for workspace: ${workspacePath}`);
             
+            // 初始化缓存系统
+            this.log('🗃️ 初始化缓存系统...');
+            await this.cacheSystem.initialize();
+            this.log('✅ 缓存系统初始化完成');
+            
             // 更新配置
             const updatedConfig = {
                 ...this.config,
@@ -120,41 +136,193 @@ class CodeChunker {
             this.performanceAnalyzer.endFileScanning(fileList.length, scanStats ? scanStats.skippedFiles : 0);
             this.log(`Found ${fileList.length} files to process.`);
             
-            // 新增：注册文件到进度跟踪器
+            // 缓存检查和过滤
+            this.log('🔍 检查文件缓存状态...');
+            const cacheCheckStart = performance.now();
+            const cacheStatus = await this.cacheSystem.cache.batchCheck(
+                fileList.map(filePath => ({
+                    path: filePath,
+                    hash: fileHashes[filePath]
+                }))
+            );
+            const cacheCheckTime = performance.now() - cacheCheckStart;
+            
+            this.log(`📊 缓存检查完成 (${cacheCheckTime.toFixed(2)}ms):`);
+            this.log(`   ✅ 缓存命中: ${cacheStatus.cached.length} 个文件`);
+            this.log(`   ❌ 缓存未命中: ${cacheStatus.uncached.length} 个文件`);
+            this.log(`   ⚠️  缓存过期: ${cacheStatus.expired.length} 个文件`);
+            
+            // 只处理缓存未命中的文件
+            const filesToProcess = cacheStatus.uncached.map(item => item.path);
+            const cachedFiles = cacheStatus.cached.map(item => item.path);
+            
+            this.log(`📝 需要处理的文件: ${filesToProcess.length}/${fileList.length} (节省 ${((cachedFiles.length / fileList.length) * 100).toFixed(1)}% 的处理时间)`);
+            
+            // 🔥 修复：注册所有文件到进度跟踪器，包括缓存的文件
             this.progressTracker.registerFiles(fileList);
             this.log(`Registered ${fileList.length} files for progress tracking.`);
-
-            // 构建 Merkle 树 - 优化：使用fileScanner中已计算的哈希值
+            
+            // 🔥 立即标记缓存文件为已完成
+            for (const cachedFile of cachedFiles) {
+                this.progressTracker.updateFileStatus(cachedFile, 'completed');
+            }
+            this.log(`Marked ${cachedFiles.length} cached files as completed.`);
+            
+            // 🔥 如果所有文件都有缓存，确保进度显示为100%完成
+            if (filesToProcess.length === 0) {
+                this.log('🎉 所有文件都有有效缓存，无需重新处理！');
+                
+                // 🔥 重要修复：从缓存中加载代码块并注册到ProgressTracker
+                this.log(`🗃️ 从缓存加载所有 ${cachedFiles.length} 个文件的代码块...`);
+                const cacheLoadStart = performance.now();
+                let totalCachedChunks = 0;
+                
+                for (const filePath of cachedFiles) {
+                    try {
+                        const cached = await this.cacheSystem.cache.get(filePath, fileHashes[filePath]);
+                        if (cached && (cached.chunks || (cached.result && cached.result.chunks))) {
+                            let fileChunkCount = 0;
+                            // 兼容两种缓存格式：直接chunks字段 或 result.chunks字段
+                            const cachedChunks = cached.chunks || cached.result.chunks;
+                            // 注册缓存的代码块到ProgressTracker
+                            for (const chunk of cachedChunks) {
+                                const chunkId = chunk.chunkId || chunk.id; // 兼容两种字段命名
+                                if (chunkId && this.progressTracker) {
+                                    this.progressTracker.registerChunk(chunkId, {
+                                        filePath: chunk.filePath,
+                                        startLine: chunk.startLine,
+                                        endLine: chunk.endLine,
+                                        content: chunk.content,
+                                        parser: chunk.parser,
+                                        type: chunk.type,
+                                        language: chunk.language
+                                    });
+                                    // 立即标记为已完成
+                                    this.progressTracker.updateChunkStatus(chunkId, 'completed');
+                                    fileChunkCount++;
+                                    totalCachedChunks++;
+                                } else {
+                                    this.warn(`代码块缺少chunkId或id字段: ${JSON.stringify({
+                                        hasChunkId: !!chunk.chunkId,
+                                        hasId: !!chunk.id,
+                                        filePath: chunk.filePath
+                                    })}`);
+                                }
+                            }
+                            this.log(`  📁 ${filePath}: 注册了 ${fileChunkCount} 个代码块`);
+                        } else {
+                            this.warn(`缓存数据格式异常: ${filePath}，期望有chunks字段但未找到。数据结构: ${JSON.stringify(Object.keys(cached || {}))}`);
+                        }
+                    } catch (error) {
+                        this.warn(`Failed to load cache for ${filePath}:`, error.message);
+                    }
+                }
+                
+                const cacheLoadTime = performance.now() - cacheLoadStart;
+                this.log(`📚 缓存加载完成: 总共注册了 ${totalCachedChunks} 个代码块 (${cacheLoadTime.toFixed(2)}ms)`);
+                
+                // 确保进度跟踪器显示所有文件和代码块已完成
+                const finalProgress = this.progressTracker.getFileProgress();
+                const chunkProgress = this.progressTracker.getOverallProgress();
+                this.log(`Final Progress: ${finalProgress.completedFiles}/${finalProgress.totalFiles} files completed (${finalProgress.progressPercentage.toFixed(2)}%)`);
+                this.log(`Chunk Progress: ${chunkProgress.completedChunks}/${chunkProgress.totalChunks} chunks completed (${chunkProgress.successRate.toFixed(2)}%)`);
+                
+                return true;
+            }
+            
+            // 构建 Merkle 树 - 使用需要处理的文件列表
             let rootHash, tree;
-            if (scanMerkleTree && scanMerkleTree.rootHash) {
-                // 如果fileScanner已经构建了增强的Merkle树，直接使用
+            if (scanMerkleTree && scanMerkleTree.rootHash && filesToProcess.length === fileList.length) {
+                // 如果fileScanner已经构建了增强的Merkle树且没有缓存优化，直接使用
                 rootHash = scanMerkleTree.rootHash;
                 tree = scanMerkleTree.tree;
                 this.merkleTree.leaves = scanMerkleTree.leaves || [];
                 this.merkleTree.tree = tree || [];
             } else {
-                // 从已计算的哈希构建Merkle树（避免重复哈希计算）
-                const hashArray = fileList.map(filePath => fileHashes[filePath]);
+                // 从需要处理的文件哈希构建Merkle树
+                const hashArray = filesToProcess.map(filePath => fileHashes[filePath]);
                 const result = this.merkleTree.buildTree(hashArray);
                 rootHash = result.rootHash;
                 tree = result.tree;
             }
             this.log(`Generated Merkle tree with root hash: ${rootHash}`);
 
-            this.log('Processing files concurrently...');
-            this.performanceAnalyzer.startFileParsing(fileList.length);
-            const fileObjects = fileList.map((f, index) => ({ 
+            // 处理文件（仅处理未缓存的文件）
+            this.log(`Processing ${filesToProcess.length} files concurrently...`);
+            this.performanceAnalyzer.startFileParsing(filesToProcess.length);
+            const fileObjects = filesToProcess.map((f, index) => ({ 
                 path: f,
                 merkleProof: this.merkleTree.getProof(index)
             }));
-            const chunks = await this.dispatcher.processFilesConcurrently(fileObjects, this.parserSelector);
+            
+            let processedChunks = [];
+            if (fileObjects.length > 0) {
+                processedChunks = await this.dispatcher.processFilesConcurrently(fileObjects, this.parserSelector);
+            }
+            
+            // 从缓存中获取已处理的块
+            let cachedChunks = [];
+            if (cachedFiles.length > 0) {
+                this.log(`🗃️ 从缓存加载 ${cachedFiles.length} 个文件的结果...`);
+                const cacheLoadStart = performance.now();
+                
+                for (const filePath of cachedFiles) {
+                    try {
+                        const cached = await this.cacheSystem.cache.get(filePath, fileHashes[filePath]);
+                        if (cached && (cached.chunks || (cached.result && cached.result.chunks))) {
+                            // 兼容两种缓存格式：直接chunks字段 或 result.chunks字段
+                            const chunks = cached.chunks || cached.result.chunks;
+                            cachedChunks.push(...chunks);
+                        }
+                    } catch (error) {
+                        this.warn(`Failed to load cache for ${filePath}:`, error.message);
+                    }
+                }
+                
+                const cacheLoadTime = performance.now() - cacheLoadStart;
+                this.log(`📚 缓存加载完成: ${cachedChunks.length} 个块 (${cacheLoadTime.toFixed(2)}ms)`);
+            }
+            
+            // 合并处理结果和缓存结果
+            const chunks = [...processedChunks, ...cachedChunks];
+            
+            // 异步存储新处理的结果到缓存
+            if (processedChunks.length > 0) {
+                this.log('💾 异步存储处理结果到缓存...');
+                const cacheStorePromises = filesToProcess.map(async (filePath) => {
+                    try {
+                        const fileChunks = processedChunks.filter(chunk => chunk.filePath === filePath);
+                        if (fileChunks.length > 0) {
+                            const cacheData = {
+                                chunks: fileChunks,
+                                metadata: {
+                                    processedAt: new Date().toISOString(),
+                                    chunkCount: fileChunks.length,
+                                    fileSize: fileContents[filePath]?.length || 0
+                                }
+                            };
+                            await this.cacheSystem.cache.set(filePath, fileHashes[filePath], cacheData);
+                        }
+                    } catch (error) {
+                        this.warn(`Failed to cache results for ${filePath}:`, error.message);
+                    }
+                });
+                
+                // 不等待缓存完成，继续处理
+                Promise.all(cacheStorePromises).then(() => {
+                    this.log('✅ 处理结果已存储到缓存');
+                }).catch(error => {
+                    this.warn('部分缓存存储失败:', error.message);
+                });
+            }
             
             // 获取真实的Worker统计信息
             const workerStats = this.dispatcher.getWorkerStats();
-            const successFiles = chunks.length > 0 ? fileList.length : 0;
-            const failedFiles = fileList.length - successFiles;
-            const syncCount = workerStats.useWorkers ? 0 : fileList.length;
-            const workerCount = workerStats.useWorkers ? fileList.length : 0;
+            const processedFiles = filesToProcess.length;
+            const successFiles = processedChunks.length > 0 ? processedFiles : 0;
+            const failedFiles = processedFiles - successFiles;
+            const syncCount = workerStats.useWorkers ? 0 : processedFiles;
+            const workerCount = workerStats.useWorkers ? processedFiles : 0;
             
             this.performanceAnalyzer.endFileParsing(
                 successFiles, 
@@ -163,7 +331,11 @@ class CodeChunker {
                 syncCount, 
                 workerCount
             );
-            this.log(`Generated ${chunks.length} chunks`);
+            
+            this.log(`📊 处理结果统计:`);
+            this.log(`   🆕 新处理: ${processedChunks.length} 个块 (来自 ${processedFiles} 个文件)`);
+            this.log(`   🗃️ 缓存加载: ${cachedChunks.length} 个块 (来自 ${cachedFiles.length} 个文件)`);
+            this.log(`   📦 总计: ${chunks.length} 个块`);
             
             // 记录分块生成信息
             const chunkSizes = chunks.map(chunk => chunk.content ? chunk.content.length : 0);
@@ -183,15 +355,16 @@ class CodeChunker {
 
             // 更新文件处理状态为完成
             if (this.progressTracker) {
-                // 将所有文件标记为已完成
-                for (const filePath of fileList) {
+                // 🔥 只标记新处理的文件为已完成（缓存文件已经在开始时标记为完成）
+                for (const filePath of filesToProcess) {
                     this.progressTracker.updateFileStatus(filePath, 'completed');
                 }
+                this.log(`Marked ${filesToProcess.length} newly processed files as completed.`);
                 
                 const finalProgress = this.progressTracker.getOverallProgress();
                 const fileProgress = this.progressTracker.getFileProgress();
                 
-                this.log(`File Processing Summary: ${fileProgress.completedFiles}/${fileProgress.totalFiles} files completed (${this.progressTracker.getFileProgressPercentage().toFixed(2)}%)`);
+                this.log(`File Processing Summary: ${fileProgress.completedFiles}/${fileProgress.totalFiles} files completed (${fileProgress.progressPercentage.toFixed(2)}%)`);
                 this.log(`Chunk Processing Summary: ${finalProgress.completedChunks}/${finalProgress.totalChunks} chunks completed (${finalProgress.successRate.toFixed(2)}%)`);
                 
                 if (finalProgress.successRate < 100) {
@@ -244,6 +417,38 @@ class CodeChunker {
                 
                 this.log(`\n📋 请查看详细的性能测速报告以了解更多信息。`);
                 this.log(`===============================================\n`);
+            }
+            
+            // 显示缓存统计信息
+            try {
+                const cacheStats = await this.cacheSystem.getSystemStats();
+                this.log(`\n🗃️ ============== 缓存系统统计 ==============`);
+                this.log(`📊 缓存性能:`);
+                this.log(`   📈 命中率: ${cacheStats.parser.hitRate}`);
+                this.log(`   📝 总请求: ${cacheStats.parser.totalRequests}`);
+                this.log(`   ✅ 缓存命中: ${cacheStats.parser.cacheHits}`);
+                this.log(`   ❌ 缓存未命中: ${cacheStats.parser.cacheMisses}`);
+                this.log(`   ⏱️  平均解析时间: ${cacheStats.parser.avgParseTime}`);
+                this.log(`   ⚡ 平均缓存时间: ${cacheStats.parser.avgCacheTime}`);
+                
+                this.log(`\n💾 数据库状态:`);
+                this.log(`   📁 缓存条目: ${cacheStats.cache.database.entryCount} 个`);
+                this.log(`   📦 总大小: ${this._formatBytes(cacheStats.cache.database.totalSize)}`);
+                this.log(`   📊 平均大小: ${this._formatBytes(cacheStats.cache.database.avgSize)}`);
+                
+                if (cacheStats.cache.database.entryCount > 0) {
+                    this.log(`   📅 最旧条目: ${new Date(cacheStats.cache.database.oldestEntry).toLocaleString()}`);
+                    this.log(`   🆕 最新条目: ${new Date(cacheStats.cache.database.newestEntry).toLocaleString()}`);
+                }
+                
+                this.log(`\n💡 缓存效益:`);
+                const timeSaved = cachedFiles.length > 0 ? 
+                    `节省了约 ${(cachedFiles.length * parseFloat(cacheStats.parser.avgParseTime) / 1000).toFixed(2)} 秒解析时间` :
+                    '本次运行未使用缓存';
+                this.log(`   ⏰ ${timeSaved}`);
+                this.log(`===============================================\n`);
+            } catch (error) {
+                this.warn('获取缓存统计失败:', error.message);
             }
 
             const endTime = Date.now();
@@ -376,9 +581,25 @@ class CodeChunker {
             if (this.sender) {
                 await this.sender.shutdown();
             }
+            if (this.cacheSystem) {
+                await this.cacheSystem.shutdown();
+            }
         } catch (error) {
             this.error('Error during shutdown:', error);
         }
+    }
+    
+    /**
+     * 格式化字节大小
+     * @param {number} bytes 字节数
+     * @returns {string} 格式化后的大小字符串
+     */
+    _formatBytes(bytes) {
+        if (bytes === 0) return '0 B';
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
     }
 
     /**

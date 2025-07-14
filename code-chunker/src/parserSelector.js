@@ -13,7 +13,8 @@ class ParserSelector {
 
     _initializeParsers() {
         // 初始化所有可用的解析器
-        this.parsers.set('ast', new AstParser(this.config));
+        this.astParser = new AstParser(this.config);
+        this.parsers.set('ast', this.astParser);
         this.parsers.set('readline', new ReadlineParser(this.config));
         this.parsers.set('filename', new FilenameParser(this.config));
     }
@@ -22,8 +23,22 @@ class ParserSelector {
         const extension = path.extname(filePath).toLowerCase();
         const languageMapping = this.config.languageMapping || {
             '.py': 'python',
+            '.java': 'java',
+            '.cs': 'csharp',
+            '.rs': 'rust',
+            '.go': 'go',
+            // '.c': 'c',     // 暂时禁用
+            // '.h': 'c',     // 暂时禁用
             '.js': 'javascript',
-            '.ts': 'typescript'
+            '.jsx': 'javascript',
+            '.ts': 'javascript',
+            '.tsx': 'javascript',
+            '.php': 'php',
+            '.cpp': 'cpp',
+            '.cxx': 'cpp',
+            '.cc': 'cpp',
+            '.hpp': 'cpp',
+            '.hxx': 'cpp'
         };
 
         const language = languageMapping[extension];
@@ -31,12 +46,27 @@ class ParserSelector {
             return this.parsers.get('readline'); // 默认使用行解析器
         }
 
-        // 根据语言选择适当的解析器
-        if (['python', 'javascript', 'typescript'].includes(language)) {
+        // 使用插件系统检查语言支持
+        if (this.astParser.isLanguageSupported(language)) {
             return this.parsers.get('ast');
         }
 
         return this.parsers.get('readline');
+    }
+
+    // 获取支持的语言列表
+    getSupportedLanguages() {
+        return this.astParser.getSupportedLanguages();
+    }
+
+    // 获取支持的文件扩展名
+    getSupportedExtensions() {
+        return this.astParser.getSupportedExtensions();
+    }
+
+    // 获取插件统计信息
+    getPluginStats() {
+        return this.astParser.getPluginStats();
     }
 }
 

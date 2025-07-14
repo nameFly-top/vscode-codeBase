@@ -23,9 +23,18 @@ const extensionConfig = {
     vscode: 'commonjs vscode', // the vscode-module is created on-the-fly and must be excluded. Add other modules that cannot be webpack'ed, 📖 -> https://webpack.js.org/configuration/externals/
     // modules added here also need to be added in the .vscodeignore file
     sqlite3: 'commonjs sqlite3',
+    // Tree-sitter core
     'tree-sitter': 'commonjs tree-sitter',
+    // Tree-sitter language parsers - 排除所有包含.node文件的语言包
+    'tree-sitter-c': 'commonjs tree-sitter-c',
+    'tree-sitter-cpp': 'commonjs tree-sitter-cpp',
+    'tree-sitter-c-sharp': 'commonjs tree-sitter-c-sharp',
+    'tree-sitter-go': 'commonjs tree-sitter-go',
+    'tree-sitter-java': 'commonjs tree-sitter-java',
+    'tree-sitter-javascript': 'commonjs tree-sitter-javascript',
+    'tree-sitter-php': 'commonjs tree-sitter-php',
     'tree-sitter-python': 'commonjs tree-sitter-python',
-    'tree-sitter-c-sharp': 'commonjs tree-sitter-c-sharp'
+    'tree-sitter-rust': 'commonjs tree-sitter-rust'
   },
   resolve: {
     // support reading TypeScript and JavaScript files, 📖 -> https://github.com/TypeStrong/ts-loader

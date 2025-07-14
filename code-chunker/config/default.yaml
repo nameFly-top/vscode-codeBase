@@ -301,4 +301,24 @@ vectorManager:
       embed: "/api/v1/codebase/embed"
       upsert: "/api/v1/codebase/upsert"
 
+# 语言映射配置
+languageMapping:
+  '.py': 'python'
+  '.java': 'java'
+  '.cs': 'csharp'
+  '.rs': 'rust'
+  '.go': 'go'
+  # '.c': 'c'     # 暂时禁用，由于tree-sitter-c版本兼容性问题
+  # '.h': 'c'     # 暂时禁用，由于tree-sitter-c版本兼容性问题
+  '.js': 'javascript'
+  '.jsx': 'javascript'
+  '.ts': 'javascript'
+  '.tsx': 'javascript'
+  '.php': 'php'
+  '.cpp': 'cpp'
+  '.cxx': 'cpp'
+  '.cc': 'cpp'
+  '.hpp': 'cpp'
+  '.hxx': 'cpp'
+
 # 注意：API端点、重试策略、embedding配置现在由 backend-api-config.js 管理 

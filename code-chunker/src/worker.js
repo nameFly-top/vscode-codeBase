@@ -256,7 +256,9 @@ async function processFile() {
                 const crypto = require('crypto');
                 const pathHash = crypto.createHash('md5').update(file.path).digest('hex').substring(0, 8);
                 const timestamp = Date.now().toString(36);
-                chunk.id = `${path.basename(file.path, path.extname(file.path))}_${pathHash}_${chunk.startLine || index}-${chunk.endLine || index}_${timestamp}_${index}`;
+                const chunkId = `${path.basename(file.path, path.extname(file.path))}_${pathHash}_${chunk.startLine || index}-${chunk.endLine || index}_${timestamp}_${index}`;
+                chunk.id = chunkId; // 兼容字段
+                chunk.chunkId = chunkId; // 确保chunkId字段存在
                 
                 // 确保使用相对路径，而不是解析器可能设置的绝对路径
                 chunk.filePath = file.path;

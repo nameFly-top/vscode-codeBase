@@ -37,6 +37,16 @@ class MerkleTree {
         this.leaves = [];
         this.tree = [];
 
+        // 处理空数组情况
+        if (!fileHashes || fileHashes.length === 0) {
+            const emptyHash = this.hashFile('');
+            return {
+                root: emptyHash,
+                rootHash: emptyHash,
+                tree: [[emptyHash]]
+            };
+        }
+
         // 直接使用已计算的哈希值作为叶节点
         this.leaves = [...fileHashes];
         this.tree.push([...this.leaves]);
@@ -57,8 +67,10 @@ class MerkleTree {
             currentLevel = nextLevel;
         }
 
+        const rootHash = this.tree[this.tree.length - 1][0];
         return {
-            rootHash: this.tree[this.tree.length - 1][0],
+            root: rootHash,
+            rootHash: rootHash,
             tree: this.tree
         };
     }

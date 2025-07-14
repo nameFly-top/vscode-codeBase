@@ -59,12 +59,14 @@ class Dispatcher {
                     const crypto = require('crypto');
                     const pathHash = crypto.createHash('md5').update(file.path).digest('hex').substring(0, 8);
                     const timestamp = Date.now().toString(36);
-                    chunk.id = `${path.basename(file.path, path.extname(file.path))}_${pathHash}_${chunk.startLine || index}-${chunk.endLine || index}_${timestamp}_${index}`;
+                    const chunkId = `${path.basename(file.path, path.extname(file.path))}_${pathHash}_${chunk.startLine || index}-${chunk.endLine || index}_${timestamp}_${index}`;
+                    chunk.id = chunkId; // 兼容字段
+                    chunk.chunkId = chunkId; // 确保chunkId字段存在
                     chunk.filePath = file.path;
                     
                     // 注册 chunk 到 ProgressTracker
                     if (this.progressTracker) {
-                        this.progressTracker.registerChunk(chunk.id, {
+                        this.progressTracker.registerChunk(chunk.chunkId, {
                             filePath: chunk.filePath,
                             startLine: chunk.startLine,
                             endLine: chunk.endLine,
@@ -215,16 +217,17 @@ class Dispatcher {
                     // chunk的id和filePath已经在worker中设置，这里只需要进行ProgressTracker注册
                     result.chunks.forEach(chunk => {
                         // 验证worker是否正确设置了必要属性
-                        if (!chunk.id || !chunk.filePath) {
+                        if (!chunk.chunkId || !chunk.filePath) {
                             this.warn(`Missing chunk properties from worker for file ${file.path}:`, {
+                                hasChunkId: !!chunk.chunkId,
                                 hasId: !!chunk.id,
                                 hasFilePath: !!chunk.filePath
                             });
                         }
                         
                         // 注册 chunk 到 ProgressTracker
-                        if (this.progressTracker && chunk.id) {
-                            this.progressTracker.registerChunk(chunk.id, {
+                        if (this.progressTracker && chunk.chunkId) {
+                            this.progressTracker.registerChunk(chunk.chunkId, {
                                 filePath: chunk.filePath,
                                 startLine: chunk.startLine,
                                 endLine: chunk.endLine,
@@ -286,12 +289,14 @@ class Dispatcher {
                 const crypto = require('crypto');
                 const pathHash = crypto.createHash('md5').update(file.path).digest('hex').substring(0, 8);
                 const timestamp = Date.now().toString(36);
-                chunk.id = `${path.basename(file.path, path.extname(file.path))}_${pathHash}_${chunk.startLine || index}-${chunk.endLine || index}_${timestamp}_${index}`;
+                const chunkId = `${path.basename(file.path, path.extname(file.path))}_${pathHash}_${chunk.startLine || index}-${chunk.endLine || index}_${timestamp}_${index}`;
+                chunk.id = chunkId; // 兼容字段
+                chunk.chunkId = chunkId; // 确保chunkId字段存在
                 chunk.filePath = file.path;
                 
                 // 注册 chunk 到 ProgressTracker
                 if (this.progressTracker) {
-                    this.progressTracker.registerChunk(chunk.id, {
+                    this.progressTracker.registerChunk(chunk.chunkId, {
                         filePath: chunk.filePath,
                         startLine: chunk.startLine,
                         endLine: chunk.endLine,

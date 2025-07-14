@@ -20,7 +20,16 @@ export class ChunkingService {
      */
     private initializeIndexCache(context: vscode.ExtensionContext) {
         if (!this.indexCacheService) {
-            this.indexCacheService = new IndexCacheService(context);
+            // 使用配置优化缓存性能
+            const cacheConfig = {
+                maxCacheSize: 100, // 100MB
+                maxRecords: 20000, // 最多20000条记录
+                expireTime: 14 * 24 * 60 * 60 * 1000, // 14天过期
+                cleanupInterval: 30 * 60 * 1000, // 30分钟清理间隔
+                enableCompression: true,
+                backupEnabled: true
+            };
+            this.indexCacheService = new IndexCacheService(context, cacheConfig);
         }
     }
     
@@ -213,6 +222,97 @@ export class ChunkingService {
         } catch (error) {
             console.error('[CodeChunker] 获取进度信息失败:', error);
             vscode.window.showErrorMessage(`获取进度信息失败: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    /**
+     * 检查索引完成状态
+     */
+    async checkIndexCompletionStatus() {
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        if (!workspaceFolder) {
+            vscode.window.showErrorMessage('请先打开一个工作区');
+            return;
+        }
+
+        const config = vscode.workspace.getConfiguration('codeChunker');
+        const userId = config.get<string>('userId');
+        const deviceId = config.get<string>('deviceId');
+        const token = config.get<string>('token');
+
+        if (!userId || !deviceId || !token) {
+            vscode.window.showErrorMessage('缺少必要的配置信息，请先配置');
+            return;
+        }
+
+        const workspacePath = workspaceFolder.uri.fsPath;
+        const workspaceName = workspaceFolder.name;
+
+        try {
+            // 🔥 关键修复：检查当前是否有处理任务正在运行
+            if (isProcessing) {
+                vscode.window.showInformationMessage(
+                    `⏳ 工作区 "${workspaceName}" 代码分块处理正在进行中\n` +
+                    `请等待当前处理任务完成后再检查索引状态`
+                );
+                return;
+            }
+
+            // 使用缓存的实例或创建新实例
+            const chunkerInstance = activeChunkerInstance || codeChunker.getChunkerInstance(userId, deviceId, workspacePath, token);
+
+            if (!chunkerInstance || !chunkerInstance.progressTracker) {
+                vscode.window.showInformationMessage('暂无索引信息，请先开始代码分块处理');
+                return;
+            }
+
+            // 获取进度信息
+            const overallProgress = chunkerInstance.progressTracker.getOverallProgress();
+            const fileProgress = chunkerInstance.progressTracker.getFileProgress();
+
+            // 判断是否完成
+            const isFileIndexingComplete = fileProgress.totalFiles > 0 && 
+                                         fileProgress.completedFiles === fileProgress.totalFiles;
+            
+            const isChunkProcessingComplete = overallProgress.totalChunks > 0 && 
+                                            overallProgress.completedChunks === overallProgress.totalChunks;
+
+            // 综合判断：文件级别和chunk级别都完成才算完成
+            const isIndexingComplete = isFileIndexingComplete && isChunkProcessingComplete;
+
+            // 显示结果
+            if (isIndexingComplete) {
+                vscode.window.showInformationMessage(
+                    `✅ 工作区 "${workspaceName}" 索引已完成\n` +
+                    `📁 文件: ${fileProgress.completedFiles}/${fileProgress.totalFiles}\n` +
+                    `🔗 代码块: ${overallProgress.completedChunks}/${overallProgress.totalChunks}`
+                );
+            } else {
+                // 🔥 提供更详细的进度信息
+                const fileCompletionRate = fileProgress.progressPercentage.toFixed(1);
+                const chunkCompletionRate = overallProgress.successRate.toFixed(1);
+                
+                let statusMessage = `⏳ 工作区 "${workspaceName}" 索引进行中\n`;
+                statusMessage += `📁 文件进度: ${fileProgress.completedFiles}/${fileProgress.totalFiles} (${fileCompletionRate}%)\n`;
+                statusMessage += `🔗 代码块进度: ${overallProgress.completedChunks}/${overallProgress.totalChunks} (${chunkCompletionRate}%)`;
+                
+                // 添加处理状态详情
+                if (fileProgress.processingFiles > 0) {
+                    statusMessage += `\n🔄 正在处理: ${fileProgress.processingFiles} 个文件`;
+                }
+                if (fileProgress.pendingFiles > 0) {
+                    statusMessage += `\n⏸️ 等待处理: ${fileProgress.pendingFiles} 个文件`;
+                }
+                if (fileProgress.failedFiles > 0) {
+                    statusMessage += `\n❌ 处理失败: ${fileProgress.failedFiles} 个文件`;
+                }
+                
+                vscode.window.showWarningMessage(statusMessage);
+            }
+
+        } catch (error) {
+            console.error('[ChunkingService] 检查索引状态失败:', error);
+            vscode.window.showErrorMessage(`索引状态检查失败: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 
@@ -422,6 +522,27 @@ export class ChunkingService {
         }
         
         return this.indexCacheService.getCacheStats();
+    }
+
+    /**
+     * 手动清理缓存
+     */
+    async manualCleanupCache(): Promise<{ removed: number; size: string } | null> {
+        if (!this.indexCacheService) {
+            return null;
+        }
+        
+        return this.indexCacheService.manualCleanup();
+    }
+
+    /**
+     * 销毁缓存服务
+     */
+    async destroyCacheService(): Promise<void> {
+        if (this.indexCacheService) {
+            await this.indexCacheService.destroy();
+            this.indexCacheService = null;
+        }
     }
 
     /**
