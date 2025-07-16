@@ -8,11 +8,11 @@ class Formatter {
         if (!Array.isArray(vector)) {
             throw new Error('Vector must be an array');
         }
-        
+
         return {
             values: vector,
             dimension: vector.length,
-            type: 'float32'
+            type: 'float32',
         };
     }
 
@@ -23,7 +23,7 @@ class Formatter {
             filePath: metadata.filePath,
             timestamp: metadata.timestamp || new Date().toISOString(),
             tags: metadata.tags || [],
-            properties: metadata.properties || {}
+            properties: metadata.properties || {},
         };
     }
 
@@ -35,9 +35,9 @@ class Formatter {
             results: results.map(result => ({
                 id: result.id,
                 score: result.score,
-                metadata: result.metadata
+                metadata: result.metadata,
             })),
-            total: results.length
+            total: results.length,
         };
     }
 
@@ -48,8 +48,8 @@ class Formatter {
                 message: error.message,
                 code: error.code || 'UNKNOWN_ERROR',
                 context: context,
-                timestamp: new Date().toISOString()
-            }
+                timestamp: new Date().toISOString(),
+            },
         };
     }
 
@@ -59,7 +59,7 @@ class Formatter {
             success: true,
             message: message,
             data: data,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
         };
     }
 
@@ -67,13 +67,13 @@ class Formatter {
     formatBatchResult(results) {
         const successCount = results.filter(r => r.success).length;
         const failureCount = results.length - successCount;
-        
+
         return {
             total: results.length,
             success: successCount,
             failure: failureCount,
             results: results,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
         };
     }
 
@@ -84,8 +84,8 @@ class Formatter {
             metrics: {
                 cpu: this._formatCPUUsage(metrics.cpu),
                 memory: this._formatMemoryUsage(metrics.memory),
-                operations: this._formatOperationMetrics(metrics.operations)
-            }
+                operations: this._formatOperationMetrics(metrics.operations),
+            },
         };
     }
 
@@ -98,8 +98,8 @@ class Formatter {
                 hitCount: stats.hitCount,
                 missCount: stats.missCount,
                 hitRate: stats.hitCount / (stats.hitCount + stats.missCount),
-                evictionCount: stats.evictionCount
-            }
+                evictionCount: stats.evictionCount,
+            },
         };
     }
 
@@ -112,7 +112,7 @@ class Formatter {
         return {
             user: this._formatTime(cpu.user),
             system: this._formatTime(cpu.system),
-            total: this._formatTime(cpu.user + cpu.system)
+            total: this._formatTime(cpu.user + cpu.system),
         };
     }
 
@@ -121,7 +121,7 @@ class Formatter {
             rss: this._formatBytes(memory.rss),
             heapTotal: this._formatBytes(memory.heapTotal),
             heapUsed: this._formatBytes(memory.heapUsed),
-            external: this._formatBytes(memory.external)
+            external: this._formatBytes(memory.external),
         };
     }
 
@@ -132,7 +132,7 @@ class Formatter {
                 avgDuration: this._formatTime(metrics.avgDuration),
                 minDuration: this._formatTime(metrics.minDuration),
                 maxDuration: this._formatTime(metrics.maxDuration),
-                errorRate: metrics.errorCount / metrics.count
+                errorRate: metrics.errorCount / metrics.count,
             };
             return acc;
         }, {});
@@ -152,12 +152,12 @@ class Formatter {
         const units = ['B', 'KB', 'MB', 'GB'];
         let value = bytes;
         let unitIndex = 0;
-        
+
         while (value >= 1024 && unitIndex < units.length - 1) {
             value /= 1024;
             unitIndex++;
         }
-        
+
         return `${value.toFixed(2)}${units[unitIndex]}`;
     }
 }

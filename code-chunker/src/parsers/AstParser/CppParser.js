@@ -11,15 +11,21 @@ class CppParser extends BaseParser {
         this.nodeTypes = {
             preprocessor: ['preproc_include', 'preproc_def', 'preproc_function_def'],
             import: ['using_declaration', 'namespace_definition', 'namespace_alias_definition'],
-            type: ['class_specifier', 'struct_specifier', 'union_specifier', 'enum_specifier', 'template_declaration'],
+            type: [
+                'class_specifier',
+                'struct_specifier',
+                'union_specifier',
+                'enum_specifier',
+                'template_declaration',
+            ],
             declaration: ['declaration'],
-            comment: ['comment']
+            comment: ['comment'],
         };
-        
+
         // 初始化tree-sitter C++解析器
         this.parser = new Parser();
         this.parser.setLanguage(Cpp);
-        
+
         // 10KB限制（留1KB余量）
         this.maxChunkSize = 9 * 1024;
     }
@@ -38,18 +44,14 @@ class CppParser extends BaseParser {
                 class: ['class_specifier'],
                 function: ['function_definition'],
                 template: ['template_declaration'],
-                declaration: ['declaration']
-            }
+                declaration: ['declaration'],
+            },
         };
     }
 
     _extractNodeCode(code, startByte, endByte) {
         const buffer = Buffer.from(code, 'utf-8');
         return buffer.slice(startByte, endByte).toString('utf-8');
-    }
-
-    async parse(content, filePath = null) {
-        return this.parseContent(content, filePath);
     }
 
     async parseContent(content, filePath = null) {
@@ -65,14 +67,18 @@ class CppParser extends BaseParser {
             }
 
             if (content.length > 10 * 1024 * 1024) {
-                console.warn(`Content too large for C++ parsing in file: ${filePath || 'unknown'} (${content.length} bytes)`);
+                console.warn(
+                    `Content too large for C++ parsing in file: ${filePath || 'unknown'} (${content.length} bytes)`
+                );
                 return [];
             }
 
             let cleanContent = content.replace(/\0/g, '');
-            
+
             if (cleanContent.length > 1024 * 1024) {
-                console.warn(`Large C++ file detected: ${filePath || 'unknown'} (${cleanContent.length} bytes), truncating for parsing`);
+                console.warn(
+                    `Large C++ file detected: ${filePath || 'unknown'} (${cleanContent.length} bytes), truncating for parsing`
+                );
                 cleanContent = cleanContent.substring(0, 1024 * 1024);
             }
 
@@ -80,30 +86,38 @@ class CppParser extends BaseParser {
             try {
                 tree = this.parser.parse(cleanContent);
             } catch (parseError) {
-                console.warn(`Direct parsing failed for ${filePath || 'unknown'}: ${parseError.message}`);
-                
+                console.warn(
+                    `Direct parsing failed for ${filePath || 'unknown'}: ${parseError.message}`
+                );
+
                 cleanContent = cleanContent
                     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
                     .replace(/\r\n/g, '\n')
                     .replace(/\r/g, '\n');
-                
+
                 try {
                     tree = this.parser.parse(cleanContent);
                 } catch (secondError) {
-                    console.warn(`Second parsing attempt failed for ${filePath || 'unknown'}: ${secondError.message}`);
-                    
+                    console.warn(
+                        `Second parsing attempt failed for ${filePath || 'unknown'}: ${secondError.message}`
+                    );
+
                     const lines = cleanContent.split('\n').slice(0, 100);
                     const truncatedContent = lines.join('\n');
                     try {
                         tree = this.parser.parse(truncatedContent);
-                        console.warn(`Successfully parsed truncated version of ${filePath || 'unknown'} (first 100 lines)`);
+                        console.warn(
+                            `Successfully parsed truncated version of ${filePath || 'unknown'} (first 100 lines)`
+                        );
                     } catch (finalError) {
-                        console.error(`All parsing attempts failed for ${filePath || 'unknown'}: ${finalError.message}`);
+                        console.error(
+                            `All parsing attempts failed for ${filePath || 'unknown'}: ${finalError.message}`
+                        );
                         return [];
                     }
                 }
             }
-            
+
             if (!tree || !tree.rootNode) {
                 console.warn(`Failed to parse AST for file: ${filePath || 'unknown'}`);
                 return [];
@@ -119,7 +133,14 @@ class CppParser extends BaseParser {
             const comments = this._extractComments(tree, cleanContent);
             const other = this._extractOther(tree, cleanContent);
 
-            const allChunks = [...preprocessors, ...imports, ...types, ...declarations, ...comments, ...other];
+            const allChunks = [
+                ...preprocessors,
+                ...imports,
+                ...types,
+                ...declarations,
+                ...comments,
+                ...other,
+            ];
             const mergedChunks = this._mergeAdjacentChunks(allChunks);
 
             return mergedChunks.map(chunk => ({
@@ -131,9 +152,8 @@ class CppParser extends BaseParser {
                 content: chunk.content,
                 parser: 'cpp_parser',
                 type: chunk.type,
-                ...(chunk.name && { name: chunk.name })
+                ...(chunk.name && { name: chunk.name }),
             }));
-
         } catch (error) {
             console.error(`Error parsing C++ content in file: ${filePath || 'unknown'}:`, error);
             return [];
@@ -142,14 +162,14 @@ class CppParser extends BaseParser {
 
     _extractPreprocessors(tree, code) {
         const preprocessors = [];
-        this._traverseNodes(tree.rootNode, (node) => {
+        this._traverseNodes(tree.rootNode, node => {
             if (this.nodeTypes.preprocessor.includes(node.type)) {
                 const nodeCode = this._extractNodeCode(code, node.startIndex, node.endIndex);
                 preprocessors.push({
                     type: 'preprocessor',
                     content: nodeCode,
                     startLine: node.startPosition.row + 1,
-                    endLine: node.endPosition.row + 1
+                    endLine: node.endPosition.row + 1,
                 });
             }
         });
@@ -158,17 +178,17 @@ class CppParser extends BaseParser {
 
     _extractImports(tree, code) {
         const imports = [];
-        this._traverseNodes(tree.rootNode, (node) => {
+        this._traverseNodes(tree.rootNode, node => {
             if (this.nodeTypes.import.includes(node.type)) {
                 const importName = this._getDefinitionName(node);
                 const nodeCode = this._extractNodeCode(code, node.startIndex, node.endIndex);
-                
+
                 imports.push({
                     type: 'import',
                     name: importName,
                     content: nodeCode,
                     startLine: node.startPosition.row + 1,
-                    endLine: node.endPosition.row + 1
+                    endLine: node.endPosition.row + 1,
                 });
             }
         });
@@ -177,17 +197,17 @@ class CppParser extends BaseParser {
 
     _extractTypes(tree, code) {
         const types = [];
-        this._traverseNodes(tree.rootNode, (node) => {
+        this._traverseNodes(tree.rootNode, node => {
             if (this.nodeTypes.type.includes(node.type)) {
                 const typeName = this._getDefinitionName(node);
                 const nodeCode = this._extractNodeCode(code, node.startIndex, node.endIndex);
-                
+
                 types.push({
                     type: 'type',
                     name: typeName,
                     content: nodeCode,
                     startLine: node.startPosition.row + 1,
-                    endLine: node.endPosition.row + 1
+                    endLine: node.endPosition.row + 1,
                 });
             }
         });
@@ -196,17 +216,17 @@ class CppParser extends BaseParser {
 
     _extractDeclarations(tree, code) {
         const declarations = [];
-        this._traverseNodes(tree.rootNode, (node) => {
+        this._traverseNodes(tree.rootNode, node => {
             if (this.nodeTypes.declaration.includes(node.type)) {
                 const declarationName = this._getDefinitionName(node);
                 const nodeCode = this._extractNodeCode(code, node.startIndex, node.endIndex);
-                
+
                 declarations.push({
                     type: 'declaration',
                     name: declarationName,
                     content: nodeCode,
                     startLine: node.startPosition.row + 1,
-                    endLine: node.endPosition.row + 1
+                    endLine: node.endPosition.row + 1,
                 });
             }
         });
@@ -215,15 +235,15 @@ class CppParser extends BaseParser {
 
     _extractComments(tree, code) {
         const comments = [];
-        this._traverseNodes(tree.rootNode, (node) => {
+        this._traverseNodes(tree.rootNode, node => {
             if (this.nodeTypes.comment.includes(node.type)) {
                 const nodeCode = this._extractNodeCode(code, node.startIndex, node.endIndex);
-                
+
                 comments.push({
                     type: 'comment',
                     content: nodeCode,
                     startLine: node.startPosition.row + 1,
-                    endLine: node.endPosition.row + 1
+                    endLine: node.endPosition.row + 1,
                 });
             }
         });
@@ -233,16 +253,16 @@ class CppParser extends BaseParser {
     _extractOther(tree, code) {
         const other = [];
         const allDefinedTypes = Object.values(this.nodeTypes).flat();
-        
+
         for (const child of tree.rootNode.children) {
             if (!allDefinedTypes.includes(child.type)) {
                 const nodeCode = this._extractNodeCode(code, child.startIndex, child.endIndex);
-                
+
                 other.push({
                     type: 'other',
                     content: nodeCode,
                     startLine: child.startPosition.row + 1,
-                    endLine: child.endPosition.row + 1
+                    endLine: child.endPosition.row + 1,
                 });
             }
         }
@@ -265,7 +285,7 @@ class CppParser extends BaseParser {
 
         for (let i = 1; i < sortedChunks.length; i++) {
             const next = sortedChunks[i];
-            
+
             if (current.type === next.type && next.startLine <= current.endLine + 2) {
                 let content = current.content;
                 if (next.startLine > current.endLine) {
@@ -279,14 +299,14 @@ class CppParser extends BaseParser {
                     startLine: current.startLine,
                     endLine: next.endLine,
                     ...(current.name && { name: current.name }),
-                    ...(next.name && !current.name && { name: next.name })
+                    ...(next.name && !current.name && { name: next.name }),
                 };
             } else {
                 merged.push(current);
                 current = next;
             }
         }
-        
+
         merged.push(current);
         return merged;
     }
@@ -302,7 +322,7 @@ class CppParser extends BaseParser {
             identifiers.push(node.text);
             return;
         }
-        
+
         for (const child of node.children) {
             this._findIdentifiers(child, identifiers);
             if (identifiers.length > 0) break;
@@ -315,4 +335,4 @@ class CppParser extends BaseParser {
     }
 }
 
-module.exports = CppParser; 
+module.exports = CppParser;

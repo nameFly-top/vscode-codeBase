@@ -10,15 +10,15 @@ class Dispatcher {
         this.maxWorkers = Math.min(config.maxWorkers || 1, 1); // 最多1个Worker
         this.workspacePath = config.workspacePath;
         this.progressTracker = config.progressTracker;
-        
+
         // 默认禁用Worker模式，优先使用同步处理避免内存问题
         this.useWorkers = false; // 改为默认禁用
-        
+
         // 添加Worker统计
         this.activeWorkers = 0;
         this.maxActiveWorkers = 0;
         this.workerFailures = 0;
-        
+
         // 添加内存监控
         this.memoryThreshold = 0.7; // 70%内存使用率时停止Worker
         this.processedFiles = 0;
@@ -52,34 +52,44 @@ class Dispatcher {
                 const parser = parserSelector.selectParser(file.path);
                 // 修复：使用正确的参数顺序 parse(filePath, content)
                 const fileChunks = await parser.parse(fullPath, content);
-                
+
                 // 为同步方法手动设置chunk属性（因为没有worker处理）
                 fileChunks.forEach((chunk, index) => {
                     // 生成唯一的chunk ID，包含路径哈希确保唯一性
                     const crypto = require('crypto');
-                    const pathHash = crypto.createHash('md5').update(file.path).digest('hex').substring(0, 8);
+                    const pathHash = crypto
+                        .createHash('md5')
+                        .update(file.path)
+                        .digest('hex')
+                        .substring(0, 8);
                     const timestamp = Date.now().toString(36);
-                    const chunkId = `${path.basename(file.path, path.extname(file.path))}_${pathHash}_${chunk.startLine || index}-${chunk.endLine || index}_${timestamp}_${index}`;
-                    chunk.id = chunkId; // 兼容字段
-                    chunk.chunkId = chunkId; // 确保chunkId字段存在
+                    chunk.id = `${path.basename(file.path, path.extname(file.path))}_${pathHash}_${chunk.startLine || index}-${chunk.endLine || index}_${timestamp}_${index}`;
                     chunk.filePath = file.path;
-                    
+
                     // 注册 chunk 到 ProgressTracker
                     if (this.progressTracker) {
-                        this.progressTracker.registerChunk(chunk.chunkId, {
+                        this.progressTracker.registerChunk(chunk.id, {
                             filePath: chunk.filePath,
                             startLine: chunk.startLine,
                             endLine: chunk.endLine,
                             content: chunk.content,
                             parser: chunk.parser,
                             type: chunk.type,
-                            language: chunk.language
+                            language: chunk.language,
                         });
                     }
                 });
-                
+
                 chunks.push(...fileChunks);
             } catch (error) {
+                console.error(`[Dispatcher] Error processing file ${file && file.path}:`, error);
+                console.error(`[Dispatcher] Error details:`, {
+                    name: error.name,
+                    message: error.message,
+                    code: error.code,
+                    stack: error.stack ? error.stack.split('\n').slice(0, 3).join('\n') : 'No stack',
+                    filePath: file ? file.path : 'unknown'
+                });
                 this.error(`Error processing file ${file && file.path}:`, error);
             }
         }
@@ -90,7 +100,7 @@ class Dispatcher {
     async processFilesConcurrently(fileList, parserSelector) {
         const chunks = [];
         const validFiles = fileList.filter(file => file && file.path);
-        
+
         if (validFiles.length === 0) {
             this.warn('No valid files to process');
             return chunks;
@@ -103,28 +113,28 @@ class Dispatcher {
         // 对于大型项目，分批处理以避免内存问题
         if (validFiles.length > this.maxFilesPerBatch) {
             this.warn(`文件数量过多 (${validFiles.length})，分批处理以避免内存问题`);
-            
+
             const batches = [];
             for (let i = 0; i < validFiles.length; i += this.maxFilesPerBatch) {
                 batches.push(validFiles.slice(i, i + this.maxFilesPerBatch));
             }
-            
+
             for (let i = 0; i < batches.length; i++) {
                 this.log(`处理批次 ${i + 1}/${batches.length} (${batches[i].length} 个文件)`);
-                
+
                 const batchChunks = await this.processFiles(batches[i], parserSelector);
                 chunks.push(...batchChunks);
-                
+
                 // 批次间检查内存并强制垃圾回收
                 this.checkMemoryUsage();
                 if (global.gc) {
                     global.gc();
                 }
-                
+
                 // 批次间小延迟，释放资源
                 await new Promise(resolve => setTimeout(resolve, 1000));
             }
-            
+
             return chunks;
         }
 
@@ -138,25 +148,30 @@ class Dispatcher {
             // 使用批处理方式控制并发数量
             const batchSize = this.maxWorkers;
             const batches = [];
-            
+
             for (let i = 0; i < validFiles.length; i += batchSize) {
                 batches.push(validFiles.slice(i, i + batchSize));
             }
 
             // 按批次处理文件
             for (const batch of batches) {
-                const batchPromises = batch.map(file => this._createWorkerPromise(file, chunks, parserSelector));
-                
+                const batchPromises = batch.map(file =>
+                    this._createWorkerPromise(file, chunks, parserSelector)
+                );
+
                 // 等待当前批次的所有 worker 完成
                 const results = await Promise.allSettled(batchPromises);
-                
+
                 // 记录任何失败的任务
                 results.forEach((result, index) => {
                     if (result.status === 'rejected') {
-                        this.error(`Batch processing failed for file ${batch[index].path}:`, result.reason);
+                        this.error(
+                            `Batch processing failed for file ${batch[index].path}:`,
+                            result.reason
+                        );
                     }
                 });
-                
+
                 // 批次间检查内存
                 this.checkMemoryUsage();
             }
@@ -176,7 +191,7 @@ class Dispatcher {
     _createWorkerPromise(file, chunks, parserSelector) {
         return new Promise((resolve, reject) => {
             let worker;
-            
+
             // 检查Worker失败率，如果太高就直接使用同步处理
             if (this.workerFailures > 10) {
                 this.warn(`Worker失败次数过多(${this.workerFailures})，切换到同步处理模式`);
@@ -186,14 +201,17 @@ class Dispatcher {
                     .catch(reject);
                 return;
             }
-            
+
             try {
                 worker = this._createWorker(file);
                 this.activeWorkers++;
                 this.maxActiveWorkers = Math.max(this.maxActiveWorkers, this.activeWorkers);
             } catch (error) {
                 this.workerFailures++;
-                this.error(`Failed to create worker for file ${file.path} (失败次数: ${this.workerFailures}):`, error);
+                this.error(
+                    `Failed to create worker for file ${file.path} (失败次数: ${this.workerFailures}):`,
+                    error
+                );
                 // 回退到同步处理单个文件
                 this._processSingleFileSync(file, chunks, parserSelector)
                     .then(resolve)
@@ -209,32 +227,34 @@ class Dispatcher {
                 reject(new Error(`Worker timeout for file ${file.path}`));
             }, 30000); // 30秒超时
 
-            worker.on('message', (result) => {
+            worker.on('message', result => {
                 clearTimeout(timeout);
                 this.activeWorkers--;
-                
+
                 if (result.chunks) {
                     // chunk的id和filePath已经在worker中设置，这里只需要进行ProgressTracker注册
                     result.chunks.forEach(chunk => {
                         // 验证worker是否正确设置了必要属性
-                        if (!chunk.chunkId || !chunk.filePath) {
-                            this.warn(`Missing chunk properties from worker for file ${file.path}:`, {
-                                hasChunkId: !!chunk.chunkId,
-                                hasId: !!chunk.id,
-                                hasFilePath: !!chunk.filePath
-                            });
+                        if (!chunk.id || !chunk.filePath) {
+                            this.warn(
+                                `Missing chunk properties from worker for file ${file.path}:`,
+                                {
+                                    hasId: !!chunk.id,
+                                    hasFilePath: !!chunk.filePath,
+                                }
+                            );
                         }
-                        
+
                         // 注册 chunk 到 ProgressTracker
-                        if (this.progressTracker && chunk.chunkId) {
-                            this.progressTracker.registerChunk(chunk.chunkId, {
+                        if (this.progressTracker && chunk.id) {
+                            this.progressTracker.registerChunk(chunk.id, {
                                 filePath: chunk.filePath,
                                 startLine: chunk.startLine,
                                 endLine: chunk.endLine,
                                 content: chunk.content,
                                 parser: chunk.parser,
                                 type: chunk.type,
-                                language: chunk.language
+                                language: chunk.language,
                             });
                         }
                     });
@@ -243,26 +263,32 @@ class Dispatcher {
                 resolve(result);
             });
 
-            worker.on('error', (error) => {
+            worker.on('error', error => {
                 clearTimeout(timeout);
                 this.activeWorkers--;
                 this.workerFailures++;
-                this.error(`Worker error for file ${file.path} (失败次数: ${this.workerFailures}):`, error);
-                
+                this.error(
+                    `Worker error for file ${file.path} (失败次数: ${this.workerFailures}):`,
+                    error
+                );
+
                 // 回退到同步处理
                 this._processSingleFileSync(file, chunks, parserSelector)
                     .then(() => resolve({ chunks: [] }))
                     .catch(reject);
             });
 
-            worker.on('exit', (code) => {
+            worker.on('exit', code => {
                 clearTimeout(timeout);
                 this.activeWorkers--;
                 if (code !== 0) {
                     this.workerFailures++;
                     const error = new Error(`Worker stopped with exit code ${code}`);
-                    this.error(`Worker exit error for file ${file.path} (失败次数: ${this.workerFailures}):`, error);
-                    
+                    this.error(
+                        `Worker exit error for file ${file.path} (失败次数: ${this.workerFailures}):`,
+                        error
+                    );
+
                     // 回退到同步处理
                     this._processSingleFileSync(file, chunks, parserSelector)
                         .then(() => resolve({ chunks: [] }))
@@ -283,31 +309,33 @@ class Dispatcher {
             const content = await fs.readFile(fullPath, 'utf8');
             const parser = parserSelector.selectParser(file.path);
             const fileChunks = await parser.parse(fullPath, content);
-            
+
             // 设置chunk属性
             fileChunks.forEach((chunk, index) => {
                 const crypto = require('crypto');
-                const pathHash = crypto.createHash('md5').update(file.path).digest('hex').substring(0, 8);
+                const pathHash = crypto
+                    .createHash('md5')
+                    .update(file.path)
+                    .digest('hex')
+                    .substring(0, 8);
                 const timestamp = Date.now().toString(36);
-                const chunkId = `${path.basename(file.path, path.extname(file.path))}_${pathHash}_${chunk.startLine || index}-${chunk.endLine || index}_${timestamp}_${index}`;
-                chunk.id = chunkId; // 兼容字段
-                chunk.chunkId = chunkId; // 确保chunkId字段存在
+                chunk.id = `${path.basename(file.path, path.extname(file.path))}_${pathHash}_${chunk.startLine || index}-${chunk.endLine || index}_${timestamp}_${index}`;
                 chunk.filePath = file.path;
-                
+
                 // 注册 chunk 到 ProgressTracker
                 if (this.progressTracker) {
-                    this.progressTracker.registerChunk(chunk.chunkId, {
+                    this.progressTracker.registerChunk(chunk.id, {
                         filePath: chunk.filePath,
                         startLine: chunk.startLine,
                         endLine: chunk.endLine,
                         content: chunk.content,
                         parser: chunk.parser,
                         type: chunk.type,
-                        language: chunk.language
+                        language: chunk.language,
                     });
                 }
             });
-            
+
             chunks.push(...fileChunks);
             this.log(`Processed file synchronously: ${file.path} (${fileChunks.length} chunks)`);
         } catch (error) {
@@ -321,7 +349,7 @@ class Dispatcher {
             path.join(__dirname, 'worker.js'),
             path.resolve(__dirname, 'worker.js'),
             path.join(process.cwd(), 'code-chunker', 'src', 'worker.js'),
-            path.join(process.cwd(), 'src', 'worker.js')
+            path.join(process.cwd(), 'src', 'worker.js'),
         ];
 
         let workerPath = null;
@@ -333,15 +361,17 @@ class Dispatcher {
         }
 
         if (!workerPath) {
-            throw new Error(`Worker script not found at any of these paths: ${possiblePaths.join(', ')}`);
+            throw new Error(
+                `Worker script not found at any of these paths: ${possiblePaths.join(', ')}`
+            );
         }
 
         const worker = new Worker(workerPath, {
             workerData: {
                 file,
                 workspacePath: this.workspacePath,
-                config: this.config
-            }
+                config: this.config,
+            },
         });
 
         return worker;
@@ -356,7 +386,7 @@ class Dispatcher {
             activeWorkers: this.activeWorkers,
             maxActiveWorkers: this.maxActiveWorkers,
             workerFailures: this.workerFailures,
-            useWorkers: this.useWorkers
+            useWorkers: this.useWorkers,
         };
     }
 
@@ -375,19 +405,19 @@ class Dispatcher {
         const memUsage = process.memoryUsage();
         const totalMem = require('os').totalmem();
         const usedPercentage = memUsage.heapUsed / totalMem;
-        
+
         if (usedPercentage > this.memoryThreshold) {
             this.warn(`高内存使用率检测到: ${(usedPercentage * 100).toFixed(2)}%，切换到同步模式`);
             this.useWorkers = false;
-            
+
             // 强制垃圾回收（如果可用）
             if (global.gc) {
                 global.gc();
             }
         }
-        
+
         return usedPercentage;
     }
 }
 
-module.exports = Dispatcher; 
+module.exports = Dispatcher;

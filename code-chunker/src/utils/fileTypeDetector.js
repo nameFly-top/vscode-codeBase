@@ -8,38 +8,113 @@ class FileTypeDetector {
     constructor() {
         // 常见二进制文件扩展名
         this.binaryExtensions = new Set([
-            '.exe', '.dll', '.so', '.dylib', '.app',  // 可执行文件
-            '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.ico', '.svg', '.webp',  // 图片
-            '.mp3', '.wav', '.mp4', '.avi', '.mov', '.mkv', '.flv',  // 音视频
-            '.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz',  // 压缩文件
-            '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',  // 办公文档
-            '.bin', '.dat', '.db', '.sqlite', '.mdb',  // 数据库/二进制数据
-            '.ttf', '.otf', '.woff', '.woff2',  // 字体文件
-            '.class', '.jar', '.pyc', '.o', '.obj',  // 编译文件
+            '.exe',
+            '.dll',
+            '.so',
+            '.dylib',
+            '.app', // 可执行文件
+            '.jpg',
+            '.jpeg',
+            '.png',
+            '.gif',
+            '.bmp',
+            '.ico',
+            '.svg',
+            '.webp', // 图片
+            '.mp3',
+            '.wav',
+            '.mp4',
+            '.avi',
+            '.mov',
+            '.mkv',
+            '.flv', // 音视频
+            '.zip',
+            '.rar',
+            '.7z',
+            '.tar',
+            '.gz',
+            '.bz2',
+            '.xz', // 压缩文件
+            '.pdf',
+            '.doc',
+            '.docx',
+            '.xls',
+            '.xlsx',
+            '.ppt',
+            '.pptx', // 办公文档
+            '.bin',
+            '.dat',
+            '.db',
+            '.sqlite',
+            '.mdb', // 数据库/二进制数据
+            '.ttf',
+            '.otf',
+            '.woff',
+            '.woff2', // 字体文件
+            '.class',
+            '.jar',
+            '.pyc',
+            '.o',
+            '.obj', // 编译文件
         ]);
 
         // 常见文本文件扩展名
         this.textExtensions = new Set([
-            '.txt', '.md', '.json', '.xml', '.html', '.htm', '.css', '.js', '.ts',
-            '.py', '.java', '.c', '.cpp', '.h', '.hpp', '.cs', '.php', '.rb',
-            '.go', '.rs', '.swift', '.kt', '.scala', '.sh', '.bat', '.ps1',
-            '.yaml', '.yml', '.toml', '.ini', '.cfg', '.conf', '.log',
-            '.sql', '.r', '.m', '.pl', '.lua', '.vim', '.dockerfile'
+            '.txt',
+            '.md',
+            '.json',
+            '.xml',
+            '.html',
+            '.htm',
+            '.css',
+            '.js',
+            '.ts',
+            '.py',
+            '.java',
+            '.c',
+            '.cpp',
+            '.h',
+            '.hpp',
+            '.cs',
+            '.php',
+            '.rb',
+            '.go',
+            '.rs',
+            '.swift',
+            '.kt',
+            '.scala',
+            '.sh',
+            '.bat',
+            '.ps1',
+            '.yaml',
+            '.yml',
+            '.toml',
+            '.ini',
+            '.cfg',
+            '.conf',
+            '.log',
+            '.sql',
+            '.r',
+            '.m',
+            '.pl',
+            '.lua',
+            '.vim',
+            '.dockerfile',
         ]);
 
         // 常见文件魔数（前几个字节的特征）
         this.binarySignatures = [
-            [0x89, 0x50, 0x4E, 0x47],  // PNG
-            [0xFF, 0xD8, 0xFF],         // JPEG
-            [0x47, 0x49, 0x46, 0x38],  // GIF
-            [0x25, 0x50, 0x44, 0x46],  // PDF
-            [0x50, 0x4B, 0x03, 0x04],  // ZIP
-            [0x50, 0x4B, 0x05, 0x06],  // ZIP (empty)
-            [0x50, 0x4B, 0x07, 0x08],  // ZIP (spanned)
-            [0x52, 0x61, 0x72, 0x21],  // RAR
-            [0x7F, 0x45, 0x4C, 0x46],  // ELF (Linux执行文件)
-            [0x4D, 0x5A],               // Windows PE执行文件
-            [0xCA, 0xFE, 0xBA, 0xBE],  // Java class文件
+            [0x89, 0x50, 0x4e, 0x47], // PNG
+            [0xff, 0xd8, 0xff], // JPEG
+            [0x47, 0x49, 0x46, 0x38], // GIF
+            [0x25, 0x50, 0x44, 0x46], // PDF
+            [0x50, 0x4b, 0x03, 0x04], // ZIP
+            [0x50, 0x4b, 0x05, 0x06], // ZIP (empty)
+            [0x50, 0x4b, 0x07, 0x08], // ZIP (spanned)
+            [0x52, 0x61, 0x72, 0x21], // RAR
+            [0x7f, 0x45, 0x4c, 0x46], // ELF (Linux执行文件)
+            [0x4d, 0x5a], // Windows PE执行文件
+            [0xca, 0xfe, 0xba, 0xbe], // Java class文件
         ];
     }
 
@@ -66,9 +141,9 @@ class FileTypeDetector {
 
         // 3. 检查是否包含空字节（null字符）
         // 大多数二进制文件包含空字节，而文本文件很少有
-        const sampleSize = Math.min(8192, buffer.length);  // 检查前8KB
+        const sampleSize = Math.min(8192, buffer.length); // 检查前8KB
         const sample = buffer.slice(0, sampleSize);
-        
+
         // 检查空字节
         if (sample.includes(0)) {
             return true;
@@ -110,18 +185,18 @@ class FileTypeDetector {
         // 检查BOM（字节顺序标记）
         if (buffer.length >= 3) {
             // UTF-8 BOM
-            if (buffer[0] === 0xEF && buffer[1] === 0xBB && buffer[2] === 0xBF) {
+            if (buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) {
                 return 'utf8';
             }
         }
-        
+
         if (buffer.length >= 2) {
             // UTF-16 LE BOM
-            if (buffer[0] === 0xFF && buffer[1] === 0xFE) {
+            if (buffer[0] === 0xff && buffer[1] === 0xfe) {
                 return 'utf16le';
             }
             // UTF-16 BE BOM
-            if (buffer[0] === 0xFE && buffer[1] === 0xFF) {
+            if (buffer[0] === 0xfe && buffer[1] === 0xff) {
                 return 'utf16be';
             }
         }
@@ -148,19 +223,19 @@ class FileTypeDetector {
      */
     analyzeFile(buffer, filePath = '') {
         const isBinary = this.isBinaryFile(buffer, filePath);
-        
+
         if (isBinary) {
             return {
                 content: null,
                 hash: crypto.createHash('sha256').update(buffer).digest('hex'),
                 isBinary: true,
                 encoding: null,
-                size: buffer.length
+                size: buffer.length,
             };
         } else {
             const encoding = this.detectEncoding(buffer) || 'utf8';
             let content;
-            
+
             try {
                 content = buffer.toString(encoding);
             } catch (error) {
@@ -175,17 +250,17 @@ class FileTypeDetector {
                         isBinary: true,
                         encoding: null,
                         size: buffer.length,
-                        error: 'Encoding conversion failed'
+                        error: 'Encoding conversion failed',
                     };
                 }
             }
-            
+
             return {
                 content: content,
                 hash: crypto.createHash('sha256').update(buffer).digest('hex'),
                 isBinary: false,
                 encoding: encoding,
-                size: buffer.length
+                size: buffer.length,
             };
         }
     }
@@ -205,7 +280,7 @@ class FileTypeDetector {
      */
     _hasBinarySignature(buffer) {
         if (buffer.length < 4) return false;
-        
+
         for (const signature of this.binarySignatures) {
             if (this._matchesSignature(buffer, signature)) {
                 return true;
@@ -220,7 +295,7 @@ class FileTypeDetector {
      */
     _matchesSignature(buffer, signature) {
         if (buffer.length < signature.length) return false;
-        
+
         for (let i = 0; i < signature.length; i++) {
             if (buffer[i] !== signature[i]) {
                 return false;

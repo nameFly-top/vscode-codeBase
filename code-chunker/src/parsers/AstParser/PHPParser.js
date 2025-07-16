@@ -16,12 +16,17 @@ class PHPParser extends BaseParser {
         // PHP节点类型分类，基于tree-sitter-php的AST节点
         this.nodeTypes = {
             namespace: ['namespace_definition', 'namespace_use_declaration'],
-            class: ['class_declaration', 'interface_declaration', 'trait_declaration', 'enum_declaration'],
+            class: [
+                'class_declaration',
+                'interface_declaration',
+                'trait_declaration',
+                'enum_declaration',
+            ],
             function: ['function_definition', 'assignment_expression'],
             import: ['include_once_expression', 'require_expression'],
-            comment: ['comment']
+            comment: ['comment'],
         };
-        
+
         // 初始化tree-sitter PHP解析器
         this.parser = new Parser();
         if (PHP && PHP.language) {
@@ -29,7 +34,7 @@ class PHPParser extends BaseParser {
         } else {
             throw new Error('PHP language parser not available');
         }
-        
+
         // 10KB限制（留1KB余量）
         this.maxChunkSize = 9 * 1024;
     }
@@ -46,18 +51,14 @@ class PHPParser extends BaseParser {
                 namespace: ['namespace_definition'],
                 class: ['class_declaration'],
                 function: ['function_definition'],
-                comment: ['comment']
-            }
+                comment: ['comment'],
+            },
         };
     }
 
     _extractNodeCode(code, startByte, endByte) {
         const buffer = Buffer.from(code, 'utf-8');
         return buffer.slice(startByte, endByte).toString('utf-8');
-    }
-
-    async parse(content, filePath = null) {
-        return this.parseContent(content, filePath);
     }
 
     async parseContent(content, filePath = null) {
@@ -73,14 +74,18 @@ class PHPParser extends BaseParser {
             }
 
             if (content.length > 10 * 1024 * 1024) {
-                console.warn(`Content too large for PHP parsing in file: ${filePath || 'unknown'} (${content.length} bytes)`);
+                console.warn(
+                    `Content too large for PHP parsing in file: ${filePath || 'unknown'} (${content.length} bytes)`
+                );
                 return [];
             }
 
             let cleanContent = content.replace(/\0/g, '');
-            
+
             if (cleanContent.length > 1024 * 1024) {
-                console.warn(`Large PHP file detected: ${filePath || 'unknown'} (${cleanContent.length} bytes), truncating for parsing`);
+                console.warn(
+                    `Large PHP file detected: ${filePath || 'unknown'} (${cleanContent.length} bytes), truncating for parsing`
+                );
                 cleanContent = cleanContent.substring(0, 1024 * 1024);
             }
 
@@ -88,30 +93,38 @@ class PHPParser extends BaseParser {
             try {
                 tree = this.parser.parse(cleanContent);
             } catch (parseError) {
-                console.warn(`Direct parsing failed for ${filePath || 'unknown'}: ${parseError.message}`);
-                
+                console.warn(
+                    `Direct parsing failed for ${filePath || 'unknown'}: ${parseError.message}`
+                );
+
                 cleanContent = cleanContent
                     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
                     .replace(/\r\n/g, '\n')
                     .replace(/\r/g, '\n');
-                
+
                 try {
                     tree = this.parser.parse(cleanContent);
                 } catch (secondError) {
-                    console.warn(`Second parsing attempt failed for ${filePath || 'unknown'}: ${secondError.message}`);
-                    
+                    console.warn(
+                        `Second parsing attempt failed for ${filePath || 'unknown'}: ${secondError.message}`
+                    );
+
                     const lines = cleanContent.split('\n').slice(0, 100);
                     const truncatedContent = lines.join('\n');
                     try {
                         tree = this.parser.parse(truncatedContent);
-                        console.warn(`Successfully parsed truncated version of ${filePath || 'unknown'} (first 100 lines)`);
+                        console.warn(
+                            `Successfully parsed truncated version of ${filePath || 'unknown'} (first 100 lines)`
+                        );
                     } catch (finalError) {
-                        console.error(`All parsing attempts failed for ${filePath || 'unknown'}: ${finalError.message}`);
+                        console.error(
+                            `All parsing attempts failed for ${filePath || 'unknown'}: ${finalError.message}`
+                        );
                         return [];
                     }
                 }
             }
-            
+
             if (!tree || !tree.rootNode) {
                 console.warn(`Failed to parse AST for file: ${filePath || 'unknown'}`);
                 return [];
@@ -127,7 +140,14 @@ class PHPParser extends BaseParser {
             const comments = this._extractComments(tree, cleanContent);
             const other = this._extractOther(tree, cleanContent);
 
-            const allChunks = [...namespaces, ...classes, ...functions, ...imports, ...comments, ...other];
+            const allChunks = [
+                ...namespaces,
+                ...classes,
+                ...functions,
+                ...imports,
+                ...comments,
+                ...other,
+            ];
             const mergedChunks = this._mergeAdjacentChunks(allChunks);
 
             return mergedChunks.map(chunk => ({
@@ -139,9 +159,8 @@ class PHPParser extends BaseParser {
                 content: chunk.content,
                 parser: 'php_parser',
                 type: chunk.type,
-                ...(chunk.name && { name: chunk.name })
+                ...(chunk.name && { name: chunk.name }),
             }));
-
         } catch (error) {
             console.error(`Error parsing PHP content in file: ${filePath || 'unknown'}:`, error);
             return [];
@@ -150,17 +169,17 @@ class PHPParser extends BaseParser {
 
     _extractNamespaces(tree, code) {
         const namespaces = [];
-        this._traverseNodes(tree.rootNode, (node) => {
+        this._traverseNodes(tree.rootNode, node => {
             if (this.nodeTypes.namespace.includes(node.type)) {
                 const namespaceName = this._getDefinitionName(node);
                 const nodeCode = this._extractNodeCode(code, node.startIndex, node.endIndex);
-                
+
                 namespaces.push({
                     type: 'namespace',
                     name: namespaceName,
                     content: nodeCode,
                     startLine: node.startPosition.row + 1,
-                    endLine: node.endPosition.row + 1
+                    endLine: node.endPosition.row + 1,
                 });
             }
         });
@@ -169,17 +188,17 @@ class PHPParser extends BaseParser {
 
     _extractClasses(tree, code) {
         const classes = [];
-        this._traverseNodes(tree.rootNode, (node) => {
+        this._traverseNodes(tree.rootNode, node => {
             if (this.nodeTypes.class.includes(node.type)) {
                 const className = this._getDefinitionName(node);
                 const nodeCode = this._extractNodeCode(code, node.startIndex, node.endIndex);
-                
+
                 classes.push({
                     type: 'class',
                     name: className,
                     content: nodeCode,
                     startLine: node.startPosition.row + 1,
-                    endLine: node.endPosition.row + 1
+                    endLine: node.endPosition.row + 1,
                 });
             }
         });
@@ -188,17 +207,17 @@ class PHPParser extends BaseParser {
 
     _extractFunctions(tree, code) {
         const functions = [];
-        this._traverseNodes(tree.rootNode, (node) => {
+        this._traverseNodes(tree.rootNode, node => {
             if (this.nodeTypes.function.includes(node.type)) {
                 const functionName = this._getDefinitionName(node);
                 const nodeCode = this._extractNodeCode(code, node.startIndex, node.endIndex);
-                
+
                 functions.push({
                     type: 'function',
                     name: functionName,
                     content: nodeCode,
                     startLine: node.startPosition.row + 1,
-                    endLine: node.endPosition.row + 1
+                    endLine: node.endPosition.row + 1,
                 });
             }
         });
@@ -207,14 +226,14 @@ class PHPParser extends BaseParser {
 
     _extractImports(tree, code) {
         const imports = [];
-        this._traverseNodes(tree.rootNode, (node) => {
+        this._traverseNodes(tree.rootNode, node => {
             if (this.nodeTypes.import.includes(node.type)) {
                 const nodeCode = this._extractNodeCode(code, node.startIndex, node.endIndex);
                 imports.push({
                     type: 'import',
                     content: nodeCode,
                     startLine: node.startPosition.row + 1,
-                    endLine: node.endPosition.row + 1
+                    endLine: node.endPosition.row + 1,
                 });
             }
         });
@@ -223,15 +242,15 @@ class PHPParser extends BaseParser {
 
     _extractComments(tree, code) {
         const comments = [];
-        this._traverseNodes(tree.rootNode, (node) => {
+        this._traverseNodes(tree.rootNode, node => {
             if (this.nodeTypes.comment.includes(node.type)) {
                 const nodeCode = this._extractNodeCode(code, node.startIndex, node.endIndex);
-                
+
                 comments.push({
                     type: 'comment',
                     content: nodeCode,
                     startLine: node.startPosition.row + 1,
-                    endLine: node.endPosition.row + 1
+                    endLine: node.endPosition.row + 1,
                 });
             }
         });
@@ -241,16 +260,16 @@ class PHPParser extends BaseParser {
     _extractOther(tree, code) {
         const other = [];
         const allDefinedTypes = Object.values(this.nodeTypes).flat();
-        
+
         for (const child of tree.rootNode.children) {
             if (!allDefinedTypes.includes(child.type)) {
                 const nodeCode = this._extractNodeCode(code, child.startIndex, child.endIndex);
-                
+
                 other.push({
                     type: 'other',
                     content: nodeCode,
                     startLine: child.startPosition.row + 1,
-                    endLine: child.endPosition.row + 1
+                    endLine: child.endPosition.row + 1,
                 });
             }
         }
@@ -273,7 +292,7 @@ class PHPParser extends BaseParser {
 
         for (let i = 1; i < sortedChunks.length; i++) {
             const next = sortedChunks[i];
-            
+
             if (current.type === next.type && next.startLine <= current.endLine + 2) {
                 let content = current.content;
                 if (next.startLine > current.endLine) {
@@ -287,14 +306,14 @@ class PHPParser extends BaseParser {
                     startLine: current.startLine,
                     endLine: next.endLine,
                     ...(current.name && { name: current.name }),
-                    ...(next.name && !current.name && { name: next.name })
+                    ...(next.name && !current.name && { name: next.name }),
                 };
             } else {
                 merged.push(current);
                 current = next;
             }
         }
-        
+
         merged.push(current);
         return merged;
     }
@@ -310,7 +329,7 @@ class PHPParser extends BaseParser {
             identifiers.push(node.text);
             return;
         }
-        
+
         for (const child of node.children) {
             this._findIdentifiers(child, identifiers);
             if (identifiers.length > 0) break;
@@ -323,4 +342,4 @@ class PHPParser extends BaseParser {
     }
 }
 
-module.exports = PHPParser; 
+module.exports = PHPParser;

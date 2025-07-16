@@ -11,79 +11,87 @@ class PerformanceAnalyzer {
         this.metrics = {
             // 总体时间
             totalTime: { start: 0, end: 0, duration: 0 },
-            
+
             // 文件扫描阶段
             fileScanning: { start: 0, end: 0, duration: 0, fileCount: 0, skippedCount: 0 },
-            
+
             // 文件解析阶段
-            fileParsing: { 
-                start: 0, end: 0, duration: 0, 
-                totalFiles: 0, 
-                successFiles: 0, 
+            fileParsing: {
+                start: 0,
+                end: 0,
+                duration: 0,
+                totalFiles: 0,
+                successFiles: 0,
                 failedFiles: 0,
                 workerCreationFailures: 0,
                 syncProcessingCount: 0,
-                workerProcessingCount: 0
+                workerProcessingCount: 0,
             },
-            
+
             // 分块生成阶段
-            chunkGeneration: { 
-                start: 0, end: 0, duration: 0, 
+            chunkGeneration: {
+                start: 0,
+                end: 0,
+                duration: 0,
                 totalChunks: 0,
                 averageChunkSize: 0,
-                largestChunk: 0
+                largestChunk: 0,
             },
-            
+
             // Embedding生成阶段
-            embeddingGeneration: { 
-                start: 0, end: 0, duration: 0, 
+            embeddingGeneration: {
+                start: 0,
+                end: 0,
+                duration: 0,
                 totalRequests: 0,
                 successRequests: 0,
                 failedRequests: 0,
                 averageRequestTime: 0,
                 batchSizes: [],
                 networkCommunicationTime: 0,
-                serverProcessingTime: 0
+                serverProcessingTime: 0,
             },
-            
+
             // 网络请求阶段 - 扩展更详细的网络监控
             networkRequests: {
-                embedding: { 
-                    count: 0, 
-                    totalTime: 0, 
-                    failures: 0, 
+                embedding: {
+                    count: 0,
+                    totalTime: 0,
+                    failures: 0,
                     averageTime: 0,
                     minTime: Infinity,
                     maxTime: 0,
                     networkTime: 0,
-                    serverTime: 0
+                    serverTime: 0,
                 },
-                vectorDB: { 
-                    count: 0, 
-                    totalTime: 0, 
-                    failures: 0, 
+                vectorDB: {
+                    count: 0,
+                    totalTime: 0,
+                    failures: 0,
                     averageTime: 0,
                     minTime: Infinity,
                     maxTime: 0,
                     insertOperations: 0,
-                    queryOperations: 0
-                }
+                    queryOperations: 0,
+                },
             },
-            
+
             // 向量数据库操作 - 细化各种操作
-            vectorDatabase: { 
-                start: 0, end: 0, duration: 0,
-                collectionOps: { 
-                    create: { count: 0, totalTime: 0 }, 
-                    delete: { count: 0, totalTime: 0 }, 
-                    insert: { count: 0, totalTime: 0 }, 
-                    query: { count: 0, totalTime: 0 } 
+            vectorDatabase: {
+                start: 0,
+                end: 0,
+                duration: 0,
+                collectionOps: {
+                    create: { count: 0, totalTime: 0 },
+                    delete: { count: 0, totalTime: 0 },
+                    insert: { count: 0, totalTime: 0 },
+                    query: { count: 0, totalTime: 0 },
                 },
                 insertedVectors: 0,
                 batchInsertCount: 0,
-                averageBatchSize: 0
+                averageBatchSize: 0,
             },
-            
+
             // 模块详细耗时追踪
             moduleTimings: {
                 fileScanner: { initTime: 0, scanTime: 0, filterTime: 0 },
@@ -91,9 +99,9 @@ class PerformanceAnalyzer {
                 dispatcher: { initTime: 0, dispatchTime: 0, workerTime: 0 },
                 sender: { initTime: 0, prepareTime: 0, sendTime: 0, batchTime: 0 },
                 vectorManager: { initTime: 0, cacheTime: 0, dbTime: 0, embeddingTime: 0 },
-                merkleTree: { buildTime: 0, proofTime: 0 }
+                merkleTree: { buildTime: 0, proofTime: 0 },
             },
-            
+
             // 系统资源使用
             systemResources: {
                 initialMemory: 0,
@@ -101,10 +109,10 @@ class PerformanceAnalyzer {
                 finalMemory: 0,
                 cpuUsage: [],
                 processId: process.pid,
-                memoryTimeline: []
-            }
+                memoryTimeline: [],
+            },
         };
-        
+
         this.timers = new Map();
         this.isAnalyzing = false;
         this.reportPath = null;
@@ -122,24 +130,26 @@ class PerformanceAnalyzer {
             name: path.basename(workspacePath),
             userId,
             deviceId,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
         };
-        
+
         // 创建固定的报告文件夹
         this.reportFolder = path.join(workspacePath, 'performance-reports');
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0] + '_' + 
-                         new Date().toTimeString().split(' ')[0].replace(/:/g, '-');
-        
+        const timestamp =
+            new Date().toISOString().replace(/[:.]/g, '-').split('T')[0] +
+            '_' +
+            new Date().toTimeString().split(' ')[0].replace(/:/g, '-');
+
         this.reportPath = path.join(this.reportFolder, `性能测速报告_${timestamp}.json`);
-        
+
         this.metrics.totalTime.start = Date.now();
         this.metrics.systemResources.initialMemory = this._getMemoryUsage();
         this.metrics.systemResources.memoryTimeline.push({
             timestamp: Date.now(),
             memory: this._getMemoryUsage(),
-            phase: 'start'
+            phase: 'start',
         });
-        
+
         console.log(`📊 [性能分析] 开始监控项目性能 - 报告将保存到: ${this.reportFolder}`);
     }
 
@@ -148,16 +158,14 @@ class PerformanceAnalyzer {
      */
     async endAnalysis() {
         if (!this.isAnalyzing) return;
-        
+
         this.metrics.totalTime.end = Date.now();
         this.metrics.totalTime.duration = this.metrics.totalTime.end - this.metrics.totalTime.start;
         this.metrics.systemResources.finalMemory = this._getMemoryUsage();
-        
+
         const report = await this._generateReport();
         await this._saveReport(report);
-        
 
-        
         this.isAnalyzing = false;
         return report;
     }
@@ -167,7 +175,6 @@ class PerformanceAnalyzer {
      */
     startFileScanning() {
         this.metrics.fileScanning.start = Date.now();
-
     }
 
     /**
@@ -175,11 +182,10 @@ class PerformanceAnalyzer {
      */
     endFileScanning(fileCount, skippedCount) {
         this.metrics.fileScanning.end = Date.now();
-        this.metrics.fileScanning.duration = this.metrics.fileScanning.end - this.metrics.fileScanning.start;
+        this.metrics.fileScanning.duration =
+            this.metrics.fileScanning.end - this.metrics.fileScanning.start;
         this.metrics.fileScanning.fileCount = fileCount;
         this.metrics.fileScanning.skippedCount = skippedCount;
-        
-
     }
 
     /**
@@ -188,7 +194,6 @@ class PerformanceAnalyzer {
     startFileParsing(totalFiles) {
         this.metrics.fileParsing.start = Date.now();
         this.metrics.fileParsing.totalFiles = totalFiles;
-
     }
 
     /**
@@ -196,14 +201,13 @@ class PerformanceAnalyzer {
      */
     endFileParsing(successFiles, failedFiles, workerFailures, syncCount, workerCount) {
         this.metrics.fileParsing.end = Date.now();
-        this.metrics.fileParsing.duration = this.metrics.fileParsing.end - this.metrics.fileParsing.start;
+        this.metrics.fileParsing.duration =
+            this.metrics.fileParsing.end - this.metrics.fileParsing.start;
         this.metrics.fileParsing.successFiles = successFiles;
         this.metrics.fileParsing.failedFiles = failedFiles;
         this.metrics.fileParsing.workerCreationFailures = workerFailures;
         this.metrics.fileParsing.syncProcessingCount = syncCount;
         this.metrics.fileParsing.workerProcessingCount = workerCount;
-        
-
     }
 
     /**
@@ -212,11 +216,11 @@ class PerformanceAnalyzer {
     recordChunkGeneration(totalChunks, chunkSizes) {
         this.metrics.chunkGeneration.totalChunks = totalChunks;
         if (chunkSizes && chunkSizes.length > 0) {
-            this.metrics.chunkGeneration.averageChunkSize = Math.round(chunkSizes.reduce((a, b) => a + b, 0) / chunkSizes.length);
+            this.metrics.chunkGeneration.averageChunkSize = Math.round(
+                chunkSizes.reduce((a, b) => a + b, 0) / chunkSizes.length
+            );
             this.metrics.chunkGeneration.largestChunk = Math.max(...chunkSizes);
         }
-        
-
     }
 
     /**
@@ -224,7 +228,6 @@ class PerformanceAnalyzer {
      */
     startEmbeddingGeneration() {
         this.metrics.embeddingGeneration.start = Date.now();
-
     }
 
     /**
@@ -232,16 +235,17 @@ class PerformanceAnalyzer {
      */
     endEmbeddingGeneration(totalRequests, successRequests, failedRequests) {
         this.metrics.embeddingGeneration.end = Date.now();
-        this.metrics.embeddingGeneration.duration = this.metrics.embeddingGeneration.end - this.metrics.embeddingGeneration.start;
+        this.metrics.embeddingGeneration.duration =
+            this.metrics.embeddingGeneration.end - this.metrics.embeddingGeneration.start;
         this.metrics.embeddingGeneration.totalRequests = totalRequests;
         this.metrics.embeddingGeneration.successRequests = successRequests;
         this.metrics.embeddingGeneration.failedRequests = failedRequests;
-        
-        if (totalRequests > 0) {
-            this.metrics.embeddingGeneration.averageRequestTime = Math.round(this.metrics.embeddingGeneration.duration / totalRequests);
-        }
-        
 
+        if (totalRequests > 0) {
+            this.metrics.embeddingGeneration.averageRequestTime = Math.round(
+                this.metrics.embeddingGeneration.duration / totalRequests
+            );
+        }
     }
 
     /**
@@ -249,15 +253,22 @@ class PerformanceAnalyzer {
      */
     recordNetworkRequest(type, duration, success = true) {
         if (!this.metrics.networkRequests[type]) {
-            this.metrics.networkRequests[type] = { count: 0, totalTime: 0, failures: 0, averageTime: 0 };
+            this.metrics.networkRequests[type] = {
+                count: 0,
+                totalTime: 0,
+                failures: 0,
+                averageTime: 0,
+            };
         }
-        
+
         this.metrics.networkRequests[type].count++;
         this.metrics.networkRequests[type].totalTime += duration;
         if (!success) {
             this.metrics.networkRequests[type].failures++;
         }
-        this.metrics.networkRequests[type].averageTime = Math.round(this.metrics.networkRequests[type].totalTime / this.metrics.networkRequests[type].count);
+        this.metrics.networkRequests[type].averageTime = Math.round(
+            this.metrics.networkRequests[type].totalTime / this.metrics.networkRequests[type].count
+        );
     }
 
     /**
@@ -265,7 +276,6 @@ class PerformanceAnalyzer {
      */
     startVectorDBOperations() {
         this.metrics.vectorDatabase.start = Date.now();
-
     }
 
     /**
@@ -273,11 +283,10 @@ class PerformanceAnalyzer {
      */
     endVectorDBOperations(insertedVectors, batchCount) {
         this.metrics.vectorDatabase.end = Date.now();
-        this.metrics.vectorDatabase.duration = this.metrics.vectorDatabase.end - this.metrics.vectorDatabase.start;
+        this.metrics.vectorDatabase.duration =
+            this.metrics.vectorDatabase.end - this.metrics.vectorDatabase.start;
         this.metrics.vectorDatabase.insertedVectors = insertedVectors;
         this.metrics.vectorDatabase.batchInsertCount = batchCount;
-        
-
     }
 
     /**
@@ -307,12 +316,15 @@ class PerformanceAnalyzer {
         if (startTime) {
             const duration = Date.now() - startTime;
             this.timers.delete(key);
-            
+
             // 记录到模块计时中
-            if (this.metrics.moduleTimings[moduleName] && this.metrics.moduleTimings[moduleName][operation] !== undefined) {
+            if (
+                this.metrics.moduleTimings[moduleName] &&
+                this.metrics.moduleTimings[moduleName][operation] !== undefined
+            ) {
                 this.metrics.moduleTimings[moduleName][operation] += duration;
             }
-            
+
             return duration;
         }
         return 0;
@@ -323,21 +335,21 @@ class PerformanceAnalyzer {
      */
     recordDetailedNetworkRequest(type, totalTime, networkTime, serverTime, success = true) {
         if (!this.metrics.networkRequests[type]) return;
-        
+
         const metric = this.metrics.networkRequests[type];
         metric.count++;
         metric.totalTime += totalTime;
-        
+
         if (totalTime < metric.minTime) metric.minTime = totalTime;
         if (totalTime > metric.maxTime) metric.maxTime = totalTime;
-        
+
         if (networkTime !== undefined) metric.networkTime += networkTime;
         if (serverTime !== undefined) metric.serverTime += serverTime;
-        
+
         if (!success) metric.failures++;
-        
+
         metric.averageTime = Math.round(metric.totalTime / metric.count);
-        
+
         // 更新embedding生成的网络分析数据
         if (type === 'embedding') {
             this.metrics.embeddingGeneration.networkCommunicationTime += networkTime || 0;
@@ -353,9 +365,9 @@ class PerformanceAnalyzer {
         this.metrics.systemResources.memoryTimeline.push({
             timestamp: Date.now(),
             memory: currentMemory,
-            phase: phase
+            phase: phase,
         });
-        
+
         if (currentMemory > this.metrics.systemResources.peakMemory) {
             this.metrics.systemResources.peakMemory = currentMemory;
         }
@@ -392,10 +404,10 @@ class PerformanceAnalyzer {
                     arch: os.arch(),
                     nodeVersion: process.version,
                     totalMemory: Math.round(os.totalmem() / 1024 / 1024), // MB
-                    cpuCount: os.cpus().length
-                }
+                    cpuCount: os.cpus().length,
+                },
             },
-            
+
             summary: {
                 totalDuration: this.metrics.totalTime.duration,
                 totalFiles: this.metrics.fileScanning.fileCount,
@@ -403,16 +415,16 @@ class PerformanceAnalyzer {
                 processedFiles: this.metrics.fileParsing.successFiles,
                 totalChunks: this.metrics.chunkGeneration.totalChunks,
                 totalEmbeddingRequests: this.metrics.embeddingGeneration.totalRequests,
-                insertedVectors: this.metrics.vectorDatabase.insertedVectors
+                insertedVectors: this.metrics.vectorDatabase.insertedVectors,
             },
-            
+
             performance: {
                 breakdown: this._calculatePerformanceBreakdown(),
                 bottlenecks: this._identifyBottlenecks(),
-                recommendations: this._generateRecommendations()
+                recommendations: this._generateRecommendations(),
             },
-            
-            detailed: this.metrics
+
+            detailed: this.metrics,
         };
 
         return report;
@@ -428,20 +440,20 @@ class PerformanceAnalyzer {
         return {
             fileScanning: {
                 duration: this.metrics.fileScanning.duration,
-                percentage: Math.round((this.metrics.fileScanning.duration / total) * 100)
+                percentage: Math.round((this.metrics.fileScanning.duration / total) * 100),
             },
             fileParsing: {
                 duration: this.metrics.fileParsing.duration,
-                percentage: Math.round((this.metrics.fileParsing.duration / total) * 100)
+                percentage: Math.round((this.metrics.fileParsing.duration / total) * 100),
             },
             embeddingGeneration: {
                 duration: this.metrics.embeddingGeneration.duration,
-                percentage: Math.round((this.metrics.embeddingGeneration.duration / total) * 100)
+                percentage: Math.round((this.metrics.embeddingGeneration.duration / total) * 100),
             },
             vectorDatabase: {
                 duration: this.metrics.vectorDatabase.duration,
-                percentage: Math.round((this.metrics.vectorDatabase.duration / total) * 100)
-            }
+                percentage: Math.round((this.metrics.vectorDatabase.duration / total) * 100),
+            },
         };
     }
 
@@ -454,7 +466,7 @@ class PerformanceAnalyzer {
 
         // 识别耗时最多的环节
         const phases = Object.entries(breakdown).sort((a, b) => b[1].percentage - a[1].percentage);
-        
+
         if (phases.length > 0) {
             const topPhase = phases[0];
             if (topPhase[1].percentage > 40) {
@@ -462,7 +474,7 @@ class PerformanceAnalyzer {
                     phase: topPhase[0],
                     impact: 'high',
                     percentage: topPhase[1].percentage,
-                    description: this._getBottleneckDescription(topPhase[0])
+                    description: this._getBottleneckDescription(topPhase[0]),
                 });
             }
         }
@@ -473,18 +485,20 @@ class PerformanceAnalyzer {
                 phase: 'workerCreation',
                 impact: 'medium',
                 count: this.metrics.fileParsing.workerCreationFailures,
-                description: 'Worker创建失败过多，影响并发处理效率'
+                description: 'Worker创建失败过多，影响并发处理效率',
             });
         }
 
         // 检查网络请求失败率
-        const embeddingFailureRate = this.metrics.embeddingGeneration.failedRequests / Math.max(this.metrics.embeddingGeneration.totalRequests, 1);
+        const embeddingFailureRate =
+            this.metrics.embeddingGeneration.failedRequests /
+            Math.max(this.metrics.embeddingGeneration.totalRequests, 1);
         if (embeddingFailureRate > 0.1) {
             bottlenecks.push({
                 phase: 'networkRequests',
                 impact: 'high',
                 failureRate: Math.round(embeddingFailureRate * 100),
-                description: 'Embedding服务请求失败率过高'
+                description: 'Embedding服务请求失败率过高',
             });
         }
 
@@ -499,7 +513,7 @@ class PerformanceAnalyzer {
             fileScanning: '文件扫描耗时过长，可能是由于文件数量过多或磁盘IO性能问题',
             fileParsing: '文件解析耗时过长，可能是Worker创建失败导致同步处理过多',
             embeddingGeneration: 'Embedding生成耗时过长，可能是网络延迟或服务器响应慢',
-            vectorDatabase: '向量数据库操作耗时过长，可能是网络连接或数据库性能问题'
+            vectorDatabase: '向量数据库操作耗时过长，可能是网络连接或数据库性能问题',
         };
         return descriptions[phase] || '未知性能问题';
     }
@@ -517,7 +531,7 @@ class PerformanceAnalyzer {
                 category: 'fileScanning',
                 priority: 'medium',
                 suggestion: '考虑增加更多文件类型到忽略列表，或启用更激进的智能筛选',
-                impact: '可减少文件扫描时间20-40%'
+                impact: '可减少文件扫描时间20-40%',
             });
         }
 
@@ -526,16 +540,19 @@ class PerformanceAnalyzer {
                 category: 'embedding',
                 priority: 'high',
                 suggestion: '考虑增加批处理大小、使用本地embedding服务或切换到更快的embedding模型',
-                impact: '可减少embedding生成时间30-60%'
+                impact: '可减少embedding生成时间30-60%',
             });
         }
 
-        if (this.metrics.fileParsing.workerCreationFailures > this.metrics.fileParsing.totalFiles * 0.3) {
+        if (
+            this.metrics.fileParsing.workerCreationFailures >
+            this.metrics.fileParsing.totalFiles * 0.3
+        ) {
             recommendations.push({
                 category: 'workerOptimization',
                 priority: 'high',
                 suggestion: '减少最大Worker数量，优化Worker创建策略，或完全使用同步处理',
-                impact: '可提高处理稳定性和速度'
+                impact: '可提高处理稳定性和速度',
             });
         }
 
@@ -544,7 +561,7 @@ class PerformanceAnalyzer {
                 category: 'vectorDB',
                 priority: 'medium',
                 suggestion: '考虑增加批量插入大小、优化网络连接或使用本地向量数据库',
-                impact: '可减少数据库操作时间20-50%'
+                impact: '可减少数据库操作时间20-50%',
             });
         }
 
@@ -558,11 +575,10 @@ class PerformanceAnalyzer {
         try {
             await fs.ensureDir(path.dirname(this.reportPath));
             await fs.writeJson(this.reportPath, report, { spaces: 2 });
-            
+
             // 同时生成一个简化的markdown报告
             const markdownPath = this.reportPath.replace('.json', '.md');
             await this._generateMarkdownReport(report, markdownPath);
-            
         } catch (error) {
             console.error('❌ [PerformanceAnalyzer] 保存报告失败:', error);
         }
@@ -572,12 +588,12 @@ class PerformanceAnalyzer {
      * 生成Markdown格式的报告
      */
     async _generateMarkdownReport(report, markdownPath) {
-        const formatTime = (ms) => {
+        const formatTime = ms => {
             if (ms >= 1000) return `${(ms / 1000).toFixed(2)}s`;
             return `${ms.toFixed(0)}ms`;
         };
 
-        const formatMemory = (mb) => {
+        const formatMemory = mb => {
             if (mb >= 1024) return `${(mb / 1024).toFixed(2)}GB`;
             return `${mb.toFixed(0)}MB`;
         };
@@ -674,19 +690,29 @@ class PerformanceAnalyzer {
 | 查询向量 | ${report.detailed.vectorDatabase.collectionOps?.query?.count || 0} | ${formatTime(report.detailed.vectorDatabase.collectionOps?.query?.totalTime || 0)} | ${report.detailed.vectorDatabase.collectionOps?.query?.count > 0 ? formatTime((report.detailed.vectorDatabase.collectionOps.query.totalTime || 0) / report.detailed.vectorDatabase.collectionOps.query.count) : '0ms'} |
 
 ## 🚨 性能瓶颈识别
-${report.performance.bottlenecks.length > 0 ? 
-  report.performance.bottlenecks.map(b => `### ${b.impact === 'high' ? '🔴' : b.impact === 'medium' ? '🟡' : '🟢'} ${b.phase} (${b.impact === 'high' ? '高影响' : b.impact === 'medium' ? '中等影响' : '低影响'})
+${
+    report.performance.bottlenecks.length > 0
+        ? report.performance.bottlenecks
+              .map(
+                  b => `### ${b.impact === 'high' ? '🔴' : b.impact === 'medium' ? '🟡' : '🟢'} ${b.phase} (${b.impact === 'high' ? '高影响' : b.impact === 'medium' ? '中等影响' : '低影响'})
 - **问题**: ${b.description}
-- **影响程度**: ${b.percentage ? `占总时间 ${b.percentage}%` : b.failureRate ? `失败率 ${b.failureRate}%` : b.count ? `失败 ${b.count} 次` : '影响较小'}`).join('\n\n') : 
-  '✅ 未检测到明显的性能瓶颈，整体运行良好！'
+- **影响程度**: ${b.percentage ? `占总时间 ${b.percentage}%` : b.failureRate ? `失败率 ${b.failureRate}%` : b.count ? `失败 ${b.count} 次` : '影响较小'}`
+              )
+              .join('\n\n')
+        : '✅ 未检测到明显的性能瓶颈，整体运行良好！'
 }
 
 ## 💡 性能优化建议
-${report.performance.recommendations.length > 0 ? 
-  report.performance.recommendations.map(r => `### ${r.priority === 'high' ? '🔴' : r.priority === 'medium' ? '🟡' : '🟢'} ${r.category} (${r.priority === 'high' ? '高优先级' : r.priority === 'medium' ? '中优先级' : '低优先级'})
+${
+    report.performance.recommendations.length > 0
+        ? report.performance.recommendations
+              .map(
+                  r => `### ${r.priority === 'high' ? '🔴' : r.priority === 'medium' ? '🟡' : '🟢'} ${r.category} (${r.priority === 'high' ? '高优先级' : r.priority === 'medium' ? '中优先级' : '低优先级'})
 - **建议**: ${r.suggestion}
-- **预期效果**: ${r.impact}`).join('\n\n') : 
-  '✅ 当前性能表现良好，暂无特殊优化建议。'
+- **预期效果**: ${r.impact}`
+              )
+              .join('\n\n')
+        : '✅ 当前性能表现良好，暂无特殊优化建议。'
 }
 
 ## 🖥️ 系统环境信息
@@ -732,28 +758,30 @@ ${this._calculatePerformanceScore(report)}/100 分
      */
     _calculatePerformanceScore(report) {
         let score = 100;
-        
+
         // 根据各阶段耗时占比扣分
         const breakdown = report.performance.breakdown;
         if (breakdown.fileScanning?.percentage > 30) score -= 10;
         if (breakdown.fileParsing?.percentage > 40) score -= 15;
         if (breakdown.embeddingGeneration?.percentage > 60) score -= 20;
         if (breakdown.vectorDatabase?.percentage > 40) score -= 15;
-        
+
         // 根据失败率扣分
-        const embeddingFailureRate = (report.detailed.embeddingGeneration.failedRequests || 0) / 
-                                   Math.max(report.detailed.embeddingGeneration.totalRequests || 1, 1);
+        const embeddingFailureRate =
+            (report.detailed.embeddingGeneration.failedRequests || 0) /
+            Math.max(report.detailed.embeddingGeneration.totalRequests || 1, 1);
         if (embeddingFailureRate > 0.1) score -= 20;
         if (embeddingFailureRate > 0.05) score -= 10;
-        
+
         // 根据Worker失败率扣分
-        const workerFailureRate = (report.detailed.fileParsing.workerCreationFailures || 0) / 
-                                 Math.max(report.detailed.fileParsing.totalFiles || 1, 1);
+        const workerFailureRate =
+            (report.detailed.fileParsing.workerCreationFailures || 0) /
+            Math.max(report.detailed.fileParsing.totalFiles || 1, 1);
         if (workerFailureRate > 0.3) score -= 15;
         if (workerFailureRate > 0.1) score -= 5;
-        
+
         return Math.max(score, 0);
     }
 }
 
-module.exports = PerformanceAnalyzer; 
+module.exports = PerformanceAnalyzer;

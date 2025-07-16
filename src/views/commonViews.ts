@@ -1,13 +1,12 @@
 import * as vscode from 'vscode';
 
 export class CommonViews {
-
     /**
      * 显示配置界面
      */
     static async showConfiguration() {
         const config = vscode.workspace.getConfiguration('codeChunker');
-        
+
         // 获取当前配置值
         const currentUserId = config.get<string>('userId') || '';
         const currentDeviceId = config.get<string>('deviceId') || '';
@@ -18,7 +17,7 @@ export class CommonViews {
             prompt: '请输入用户ID',
             value: currentUserId,
             placeHolder: '例如: user123',
-            validateInput: (value) => {
+            validateInput: value => {
                 if (!value || value.trim().length === 0) {
                     return '用户ID不能为空';
                 }
@@ -26,7 +25,7 @@ export class CommonViews {
                     return '用户ID至少需要3个字符';
                 }
                 return null;
-            }
+            },
         });
 
         if (userId === undefined) {
@@ -38,7 +37,7 @@ export class CommonViews {
             prompt: '请输入设备ID',
             value: currentDeviceId,
             placeHolder: '例如: device456',
-            validateInput: (value) => {
+            validateInput: value => {
                 if (!value || value.trim().length === 0) {
                     return '设备ID不能为空';
                 }
@@ -46,7 +45,7 @@ export class CommonViews {
                     return '设备ID至少需要3个字符';
                 }
                 return null;
-            }
+            },
         });
 
         if (deviceId === undefined) {
@@ -59,7 +58,7 @@ export class CommonViews {
             value: currentToken,
             placeHolder: '例如: your_access_token',
             password: true, // 隐藏输入内容
-            validateInput: (value) => {
+            validateInput: value => {
                 if (!value || value.trim().length === 0) {
                     return '访问令牌不能为空';
                 }
@@ -67,7 +66,7 @@ export class CommonViews {
                     return '访问令牌至少需要10个字符';
                 }
                 return null;
-            }
+            },
         });
 
         if (token === undefined) {
@@ -83,10 +82,11 @@ export class CommonViews {
             vscode.window.showInformationMessage(
                 `配置已保存！\n用户ID: ${userId}\n设备ID: ${deviceId}\nToken: ${token.substring(0, 6)}...`
             );
-
         } catch (error) {
             console.error('[CommonViews] 保存配置失败:', error);
-            vscode.window.showErrorMessage(`保存配置失败: ${error instanceof Error ? error.message : String(error)}`);
+            vscode.window.showErrorMessage(
+                `保存配置失败: ${error instanceof Error ? error.message : String(error)}`
+            );
         }
     }
 
@@ -100,7 +100,7 @@ export class CommonViews {
         fileProgressPercentage: number
     ) {
         const outputChannel = vscode.window.createOutputChannel('代码分块进度');
-        
+
         try {
             outputChannel.clear();
             outputChannel.appendLine('📊 代码分块处理进度报告');
@@ -128,16 +128,21 @@ export class CommonViews {
             // 文件详细进度
             if (fileProgressSummary && fileProgressSummary.length > 0) {
                 outputChannel.appendLine('📄 文件详细进度:');
-                outputChannel.appendLine(`${'文件名'.padEnd(25)} ${'语言'.padEnd(12)} ${'完成'.padEnd(6)} ${'总计'.padEnd(6)} ${'成功率'.padEnd(8)}`);
+                outputChannel.appendLine(
+                    `${'文件名'.padEnd(25)} ${'语言'.padEnd(12)} ${'完成'.padEnd(6)} ${'总计'.padEnd(6)} ${'成功率'.padEnd(8)}`
+                );
                 outputChannel.appendLine('-'.repeat(60));
-                
+
                 fileProgressSummary.forEach(fileInfo => {
-                    const fileName = fileInfo.file.length > 23 ? fileInfo.file.substring(0, 20) + '...' : fileInfo.file;
+                    const fileName =
+                        fileInfo.file.length > 23
+                            ? fileInfo.file.substring(0, 20) + '...'
+                            : fileInfo.file;
                     const language = fileInfo.language || 'unknown';
                     const completed = fileInfo.completed.toString();
                     const total = fileInfo.total.toString();
                     const successRate = fileInfo.successRate.toFixed(1) + '%';
-                    
+
                     outputChannel.appendLine(
                         `${fileName.padEnd(25)} ${language.padEnd(12)} ${completed.padEnd(6)} ${total.padEnd(6)} ${successRate.padEnd(8)}`
                     );
@@ -151,14 +156,16 @@ export class CommonViews {
             outputChannel.show(true);
 
             // 显示摘要通知
-            const summaryMessage = `处理进度: 文件 ${fileProgress.completedFiles}/${fileProgress.totalFiles} (${fileProgressPercentage.toFixed(1)}%), ` +
-                                 `代码块 ${overallProgress.completedChunks}/${overallProgress.totalChunks} (${overallProgress.successRate.toFixed(1)}%)`;
-            
-            vscode.window.showInformationMessage(summaryMessage);
+            const summaryMessage =
+                `处理进度: 文件 ${fileProgress.completedFiles}/${fileProgress.totalFiles} (${fileProgressPercentage.toFixed(1)}%), ` +
+                `代码块 ${overallProgress.completedChunks}/${overallProgress.totalChunks} (${overallProgress.successRate.toFixed(1)}%)`;
 
+            vscode.window.showInformationMessage(summaryMessage);
         } catch (error) {
             console.error('[CommonViews] 显示进度详情失败:', error);
-            vscode.window.showErrorMessage(`显示进度详情失败: ${error instanceof Error ? error.message : String(error)}`);
+            vscode.window.showErrorMessage(
+                `显示进度详情失败: ${error instanceof Error ? error.message : String(error)}`
+            );
         }
     }
 
@@ -190,10 +197,13 @@ export class CommonViews {
         title: string,
         task: (progress: vscode.Progress<{ increment?: number; message?: string }>) => Promise<T>
     ): Promise<T> {
-        return await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: title,
-            cancellable: false
-        }, task);
+        return await vscode.window.withProgress(
+            {
+                location: vscode.ProgressLocation.Notification,
+                title: title,
+                cancellable: false,
+            },
+            task
+        );
     }
-} 
+}

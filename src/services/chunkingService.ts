@@ -20,19 +20,10 @@ export class ChunkingService {
      */
     private initializeIndexCache(context: vscode.ExtensionContext) {
         if (!this.indexCacheService) {
-            // 使用配置优化缓存性能
-            const cacheConfig = {
-                maxCacheSize: 100, // 100MB
-                maxRecords: 20000, // 最多20000条记录
-                expireTime: 14 * 24 * 60 * 60 * 1000, // 14天过期
-                cleanupInterval: 30 * 60 * 1000, // 30分钟清理间隔
-                enableCompression: true,
-                backupEnabled: true
-            };
-            this.indexCacheService = new IndexCacheService(context, cacheConfig);
+            this.indexCacheService = new IndexCacheService(context);
         }
     }
-    
+
     /**
      * 执行代码分块
      */
@@ -84,97 +75,173 @@ export class ChunkingService {
             this.initializeIndexCache(context);
         }
 
-        return await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: '代码分块处理中...',
-            cancellable: false
-        }, async (progress) => {
-            try {
-                progress.report({ increment: 0, message: '初始化处理环境...' });
-
-                // 获取或创建chunker实例
-                activeChunkerInstance = codeChunker.getChunkerInstance(userId, deviceId, workspacePath, token);
-
-                progress.report({ increment: 10, message: '检查文件索引缓存...' });
-
-                // 如果启用了索引缓存，先检查哪些文件需要处理
-                let filesToProcess: string[] = [];
-                let skippedFiles: string[] = [];
-
-                if (this.indexCacheService) {
-                    try {
-                        // 扫描工作区获取文件列表
-                        const allFiles = await this.scanWorkspaceFiles(workspacePath, ignorePatterns);
-                        
-                        // 检查哪些文件已经索引过
-                        const { indexed, unindexed } = await this.indexCacheService.filterUnindexedFiles(
-                            allFiles, workspacePath, userId, deviceId
-                        );
-                        
-                        filesToProcess = unindexed;
-                        skippedFiles = indexed;
-
-                        progress.report({ 
-                            increment: 10, 
-                            message: `缓存检查完成：跳过 ${skippedFiles.length} 个文件，处理 ${filesToProcess.length} 个文件...` 
-                        });
-
-                        // 显示缓存统计
-                        if (skippedFiles.length > 0) {
-                
-                        }
-                    } catch (error) {
-                        console.warn('[ChunkingService] 索引缓存检查失败，将处理所有文件:', error);
-                        filesToProcess = []; // 空数组表示处理所有文件
-                    }
-                }
-
-                progress.report({ increment: 10, message: '开始处理工作区文件...' });
-
-                // 执行代码分块处理
-                let success: boolean;
+        return await vscode.window.withProgress(
+            {
+                location: vscode.ProgressLocation.Notification,
+                title: '代码分块处理中...',
+                cancellable: false,
+            },
+            async progress => {
                 try {
-                    success = filesToProcess.length === 0 
-                        ? await codeChunker.processWorkspace(userId, deviceId, workspacePath, token, ignorePatterns)
-                        : await this.processSpecificFiles(userId, deviceId, workspacePath, token, filesToProcess);
-                } catch (processingError) {
-                    const error = processingError instanceof Error ? processingError : new Error(String(processingError));
-                    console.error('🔥 代码分块处理出现异常:', error);
-                    console.error('🔥 异常详情:', {
-                        name: error.name,
-                        message: error.message,
-                        stack: error.stack
-                    });
-                    vscode.window.showErrorMessage(`代码分块处理失败: ${error.message || 'Unknown error'}`);
-                    return false;
-                }
+                    progress.report({ increment: 0, message: '初始化处理环境...' });
 
-                // 如果处理成功且启用了缓存，标记新处理的文件为已索引
-                if (success && this.indexCacheService && filesToProcess.length > 0) {
-                    try {
-                        await this.indexCacheService.markFilesAsIndexed(filesToProcess, workspacePath, userId, deviceId);
-            
-                    } catch (error) {
-                        console.warn('[ChunkingService] 标记文件索引状态失败:', error);
+                    // 获取或创建chunker实例
+                    activeChunkerInstance = codeChunker.getChunkerInstance(
+                        userId,
+                        deviceId,
+                        workspacePath,
+                        token
+                    );
+
+                    progress.report({ increment: 10, message: '检查文件索引缓存...' });
+
+                    // 如果启用了索引缓存，先检查哪些文件需要处理
+                    let filesToProcess: string[] = [];
+                    let skippedFiles: string[] = [];
+
+                    if (this.indexCacheService) {
+                        try {
+                            // 扫描工作区获取文件列表
+                            const allFiles = await this.scanWorkspaceFiles(
+                                workspacePath,
+                                ignorePatterns
+                            );
+
+                            // 检查哪些文件已经索引过
+                            const { indexed, unindexed } =
+                                await this.indexCacheService.filterUnindexedFiles(
+                                    allFiles,
+                                    workspacePath,
+                                    userId,
+                                    deviceId
+                                );
+
+                            filesToProcess = unindexed;
+                            skippedFiles = indexed;
+
+                            progress.report({
+                                increment: 10,
+                                message: `缓存检查完成：跳过 ${skippedFiles.length} 个文件，处理 ${filesToProcess.length} 个文件...`,
+                            });
+
+                            // 显示缓存统计
+                            if (skippedFiles.length > 0) {
+                            }
+                        } catch (error) {
+                            console.warn(
+                                '[ChunkingService] 索引缓存检查失败，将处理所有文件:',
+                                error
+                            );
+                            filesToProcess = []; // 空数组表示处理所有文件
+                        }
                     }
-                }
 
-                if (success) {
-                    progress.report({ increment: 100, message: '处理完成！' });
-                    vscode.window.showInformationMessage(`工作区 "${workspaceName}" 代码分块处理完成！`);
-                    return true;
-                } else {
-                    vscode.window.showErrorMessage('代码分块处理失败');
+                    progress.report({ increment: 10, message: '开始处理工作区文件...' });
+
+                    // 执行代码分块处理
+                    let success: boolean;
+                    try {
+                        success =
+                            filesToProcess.length === 0
+                                ? await codeChunker.processWorkspace(
+                                      userId,
+                                      deviceId,
+                                      workspacePath,
+                                      token,
+                                      ignorePatterns
+                                  )
+                                : await this.processSpecificFiles(
+                                      userId,
+                                      deviceId,
+                                      workspacePath,
+                                      token,
+                                      filesToProcess
+                                  );
+                    } catch (processingError) {
+                        const error =
+                            processingError instanceof Error
+                                ? processingError
+                                : new Error(String(processingError));
+                        console.error('🔥 代码分块处理出现异常:', error);
+                        
+                        // 类型安全的错误信息提取
+                        const errorAny = error as any;
+                        console.error('🔥 异常详情:', {
+                            name: error.name,
+                            message: error.message,
+                            stack: error.stack,
+                            requestId: errorAny.requestId,
+                            errorCode: errorAny.errorCode,
+                            response: errorAny.response,
+                        });
+                        
+                        // 改进错误信息显示
+                        let errorMessage = '代码分块处理失败';
+                        if (error.message && error.message !== '[object Object]') {
+                            errorMessage += `: ${error.message}`;
+                        } else if (errorAny.response && errorAny.response.detail && errorAny.response.detail.error) {
+                            errorMessage += `: ${errorAny.response.detail.error}`;
+                        } else if (errorAny.errorCode) {
+                            errorMessage += `: 错误代码 ${errorAny.errorCode}`;
+                        } else {
+                            errorMessage += ': 未知错误，请查看控制台详情';
+                        }
+                        
+                        vscode.window.showErrorMessage(errorMessage);
+                        return false;
+                    }
+
+                    // 如果处理成功且启用了缓存，标记相关文件为已索引
+                    if (success && this.indexCacheService) {
+                        try {
+                            // 如果有具体文件需要处理，标记这些文件
+                            if (filesToProcess.length > 0) {
+                                await this.indexCacheService.markFilesAsIndexed(
+                                    filesToProcess,
+                                    workspacePath,
+                                    userId,
+                                    deviceId
+                                );
+                            } else {
+                                // 如果处理了整个工作区（没有新文件），标记所有扫描到的文件为已索引
+                                const allFiles = await this.scanWorkspaceFiles(
+                                    workspacePath,
+                                    ignorePatterns
+                                );
+                                await this.indexCacheService.markFilesAsIndexed(
+                                    allFiles,
+                                    workspacePath,
+                                    userId,
+                                    deviceId
+                                );
+                                console.log(`[ChunkingService] 已标记 ${allFiles.length} 个文件为已索引`);
+                            }
+                        } catch (error) {
+                            console.warn('[ChunkingService] 标记文件索引状态失败:', error);
+                        }
+                    }
+
+                    if (success) {
+                        progress.report({ increment: 100, message: '处理完成！' });
+                        vscode.window.showInformationMessage(
+                            `工作区 "${workspaceName}" 代码分块处理完成！`
+                        );
+                        return true;
+                    } else {
+                        vscode.window.showErrorMessage('代码分块处理失败');
+                        return false;
+                    }
+                } catch (error) {
+                    console.error('[CodeChunker] 处理过程出错:', error);
+                    vscode.window.showErrorMessage(
+                        `处理失败: ${error instanceof Error ? error.message : String(error)}`
+                    );
                     return false;
+                } finally {
+                    isProcessing = false;
                 }
-            } catch (error) {
-                console.error('[CodeChunker] 处理过程出错:', error);
-                vscode.window.showErrorMessage(`处理失败: ${error instanceof Error ? error.message : String(error)}`);
-                return false;
-            } finally {
-                isProcessing = false;
             }
-        });
+        );
     }
 
     /**
@@ -201,7 +268,9 @@ export class ChunkingService {
 
         try {
             // 使用缓存的实例或创建新实例
-            const chunkerInstance = activeChunkerInstance || codeChunker.getChunkerInstance(userId, deviceId, workspacePath, token);
+            const chunkerInstance =
+                activeChunkerInstance ||
+                codeChunker.getChunkerInstance(userId, deviceId, workspacePath, token);
 
             if (!chunkerInstance || !chunkerInstance.progressTracker) {
                 vscode.window.showInformationMessage('暂无进度信息，请先开始代码分块处理');
@@ -214,105 +283,21 @@ export class ChunkingService {
             const fileProgressSummary = chunkerInstance.progressTracker.getFileProgressSummary();
 
             // 计算文件级别的进度百分比
-            const fileProgressPercentage = chunkerInstance.progressTracker.getFileProgressPercentage();
+            const fileProgressPercentage =
+                chunkerInstance.progressTracker.getFileProgressPercentage();
 
             // 显示进度信息
-            await CommonViews.showProgressDetails(overallProgress, fileProgress, fileProgressSummary, fileProgressPercentage);
-
+            await CommonViews.showProgressDetails(
+                overallProgress,
+                fileProgress,
+                fileProgressSummary,
+                fileProgressPercentage
+            );
         } catch (error) {
             console.error('[CodeChunker] 获取进度信息失败:', error);
-            vscode.window.showErrorMessage(`获取进度信息失败: ${error instanceof Error ? error.message : String(error)}`);
-        }
-    }
-
-    /**
-     * 检查索引完成状态
-     */
-    async checkIndexCompletionStatus() {
-        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-        if (!workspaceFolder) {
-            vscode.window.showErrorMessage('请先打开一个工作区');
-            return;
-        }
-
-        const config = vscode.workspace.getConfiguration('codeChunker');
-        const userId = config.get<string>('userId');
-        const deviceId = config.get<string>('deviceId');
-        const token = config.get<string>('token');
-
-        if (!userId || !deviceId || !token) {
-            vscode.window.showErrorMessage('缺少必要的配置信息，请先配置');
-            return;
-        }
-
-        const workspacePath = workspaceFolder.uri.fsPath;
-        const workspaceName = workspaceFolder.name;
-
-        try {
-            // 🔥 关键修复：检查当前是否有处理任务正在运行
-            if (isProcessing) {
-                vscode.window.showInformationMessage(
-                    `⏳ 工作区 "${workspaceName}" 代码分块处理正在进行中\n` +
-                    `请等待当前处理任务完成后再检查索引状态`
-                );
-                return;
-            }
-
-            // 使用缓存的实例或创建新实例
-            const chunkerInstance = activeChunkerInstance || codeChunker.getChunkerInstance(userId, deviceId, workspacePath, token);
-
-            if (!chunkerInstance || !chunkerInstance.progressTracker) {
-                vscode.window.showInformationMessage('暂无索引信息，请先开始代码分块处理');
-                return;
-            }
-
-            // 获取进度信息
-            const overallProgress = chunkerInstance.progressTracker.getOverallProgress();
-            const fileProgress = chunkerInstance.progressTracker.getFileProgress();
-
-            // 判断是否完成
-            const isFileIndexingComplete = fileProgress.totalFiles > 0 && 
-                                         fileProgress.completedFiles === fileProgress.totalFiles;
-            
-            const isChunkProcessingComplete = overallProgress.totalChunks > 0 && 
-                                            overallProgress.completedChunks === overallProgress.totalChunks;
-
-            // 综合判断：文件级别和chunk级别都完成才算完成
-            const isIndexingComplete = isFileIndexingComplete && isChunkProcessingComplete;
-
-            // 显示结果
-            if (isIndexingComplete) {
-                vscode.window.showInformationMessage(
-                    `✅ 工作区 "${workspaceName}" 索引已完成\n` +
-                    `📁 文件: ${fileProgress.completedFiles}/${fileProgress.totalFiles}\n` +
-                    `🔗 代码块: ${overallProgress.completedChunks}/${overallProgress.totalChunks}`
-                );
-            } else {
-                // 🔥 提供更详细的进度信息
-                const fileCompletionRate = fileProgress.progressPercentage.toFixed(1);
-                const chunkCompletionRate = overallProgress.successRate.toFixed(1);
-                
-                let statusMessage = `⏳ 工作区 "${workspaceName}" 索引进行中\n`;
-                statusMessage += `📁 文件进度: ${fileProgress.completedFiles}/${fileProgress.totalFiles} (${fileCompletionRate}%)\n`;
-                statusMessage += `🔗 代码块进度: ${overallProgress.completedChunks}/${overallProgress.totalChunks} (${chunkCompletionRate}%)`;
-                
-                // 添加处理状态详情
-                if (fileProgress.processingFiles > 0) {
-                    statusMessage += `\n🔄 正在处理: ${fileProgress.processingFiles} 个文件`;
-                }
-                if (fileProgress.pendingFiles > 0) {
-                    statusMessage += `\n⏸️ 等待处理: ${fileProgress.pendingFiles} 个文件`;
-                }
-                if (fileProgress.failedFiles > 0) {
-                    statusMessage += `\n❌ 处理失败: ${fileProgress.failedFiles} 个文件`;
-                }
-                
-                vscode.window.showWarningMessage(statusMessage);
-            }
-
-        } catch (error) {
-            console.error('[ChunkingService] 检查索引状态失败:', error);
-            vscode.window.showErrorMessage(`索引状态检查失败: ${error instanceof Error ? error.message : String(error)}`);
+            vscode.window.showErrorMessage(
+                `获取进度信息失败: ${error instanceof Error ? error.message : String(error)}`
+            );
         }
     }
 
@@ -340,50 +325,59 @@ export class ChunkingService {
 
         try {
             // 获取chunker实例
-            const chunkerInstance = activeChunkerInstance || codeChunker.getChunkerInstance(userId, deviceId, workspacePath, token);
+            const chunkerInstance =
+                activeChunkerInstance ||
+                codeChunker.getChunkerInstance(userId, deviceId, workspacePath, token);
 
             if (!chunkerInstance.vectorManager) {
                 vscode.window.showErrorMessage('VectorManager未初始化，无法清除缓存');
                 return;
             }
 
-            await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: '清除缓存中...',
-                cancellable: false
-            }, async (progress) => {
-                progress.report({ increment: 0, message: '获取缓存信息...' });
+            await vscode.window.withProgress(
+                {
+                    location: vscode.ProgressLocation.Notification,
+                    title: '清除缓存中...',
+                    cancellable: false,
+                },
+                async progress => {
+                    progress.report({ increment: 0, message: '获取缓存信息...' });
 
-                // 获取向量信息
-                const vectorInfo = await chunkerInstance.vectorManager.getVectorInfo();
-                
-                progress.report({ increment: 50, message: '清空临时向量存储...' });
+                    // 获取向量信息
+                    const vectorInfo = await chunkerInstance.vectorManager.getVectorInfo();
 
-                // 清空临时向量存储
-                if (chunkerInstance.vectorManager.tempVectors) {
-                    chunkerInstance.vectorManager.tempVectors.clear();
+                    progress.report({ increment: 50, message: '清空临时向量存储...' });
+
+                    // 清空临时向量存储
+                    if (chunkerInstance.vectorManager.tempVectors) {
+                        chunkerInstance.vectorManager.tempVectors.clear();
+                    }
+
+                    progress.report({ increment: 100, message: '临时存储清空完成！' });
+
+                    // 显示清空结果
+                    vscode.window.showInformationMessage(
+                        `临时存储清空完成！\n` +
+                            `清空向量数: ${vectorInfo.totalVectors}\n` +
+                            `释放空间: ${(vectorInfo.cacheSize / 1024 / 1024).toFixed(2)} MB`
+                    );
                 }
-
-                progress.report({ increment: 100, message: '临时存储清空完成！' });
-
-                // 显示清空结果
-                vscode.window.showInformationMessage(
-                    `临时存储清空完成！\n` +
-                    `清空向量数: ${vectorInfo.totalVectors}\n` +
-                    `释放空间: ${(vectorInfo.cacheSize / 1024 / 1024).toFixed(2)} MB`
-                );
-            });
-
+            );
         } catch (error) {
             console.error('[CodeChunker] 清除缓存失败:', error);
-            vscode.window.showErrorMessage(`清除缓存失败: ${error instanceof Error ? error.message : String(error)}`);
+            vscode.window.showErrorMessage(
+                `清除缓存失败: ${error instanceof Error ? error.message : String(error)}`
+            );
         }
     }
 
     /**
      * 计算文件进度
      */
-    async calculateFileProgress(workspacePath: string, totalVectors: number): Promise<{
+    async calculateFileProgress(
+        workspacePath: string,
+        totalVectors: number
+    ): Promise<{
         totalFiles: number;
         processedFiles: number;
         progressPercentage: number;
@@ -397,14 +391,16 @@ export class ChunkingService {
         async function scanDirectory(dirPath: string) {
             try {
                 const items = await fs.promises.readdir(dirPath, { withFileTypes: true });
-                
+
                 for (const item of items) {
                     const fullPath = path.join(dirPath, item.name);
                     const relativePath = path.relative(workspacePath, fullPath);
 
                     // 检查是否应该忽略
                     const shouldIgnore = ignorePatterns.some(pattern => {
-                        return relativePath.includes(pattern.replace(/\*\*/g, '').replace(/\*/g, ''));
+                        return relativePath.includes(
+                            pattern.replace(/\*\*/g, '').replace(/\*/g, '')
+                        );
                     });
 
                     if (shouldIgnore) {
@@ -416,14 +412,25 @@ export class ChunkingService {
                     } else if (item.isFile()) {
                         // 只统计代码文件
                         const ext = path.extname(item.name).toLowerCase();
-                        const codeExtensions = ['.py', '.js', '.ts', '.java', '.cpp', '.c', '.go', '.rs', '.php', '.rb'];
-                        
+                        const codeExtensions = [
+                            '.py',
+                            '.js',
+                            '.ts',
+                            '.java',
+                            '.cpp',
+                            '.c',
+                            '.go',
+                            '.rs',
+                            '.php',
+                            '.rb',
+                        ];
+
                         if (codeExtensions.includes(ext)) {
                             totalFiles++;
-                            
+
                             // 简单估算：假设每个文件平均产生10个向量
                             const estimatedVectorsPerFile = 10;
-                            if (totalVectors > (processedFiles * estimatedVectorsPerFile)) {
+                            if (totalVectors > processedFiles * estimatedVectorsPerFile) {
                                 processedFiles++;
                             }
                         }
@@ -439,27 +446,32 @@ export class ChunkingService {
         return {
             totalFiles,
             processedFiles,
-            progressPercentage: totalFiles > 0 ? (processedFiles / totalFiles) * 100 : 0
+            progressPercentage: totalFiles > 0 ? (processedFiles / totalFiles) * 100 : 0,
         };
     }
 
     /**
      * 扫描工作区文件
      */
-    private async scanWorkspaceFiles(workspacePath: string, ignorePatterns: string[]): Promise<string[]> {
+    private async scanWorkspaceFiles(
+        workspacePath: string,
+        ignorePatterns: string[]
+    ): Promise<string[]> {
         const files: string[] = [];
 
         async function scanDirectory(dirPath: string) {
             try {
                 const items = await fs.promises.readdir(dirPath, { withFileTypes: true });
-                
+
                 for (const item of items) {
                     const fullPath = path.join(dirPath, item.name);
                     const relativePath = path.relative(workspacePath, fullPath);
 
                     // 检查是否应该忽略
                     const shouldIgnore = ignorePatterns.some(pattern => {
-                        return relativePath.includes(pattern.replace(/\*\*/g, '').replace(/\*/g, ''));
+                        return relativePath.includes(
+                            pattern.replace(/\*\*/g, '').replace(/\*/g, '')
+                        );
                     });
 
                     if (shouldIgnore) {
@@ -471,8 +483,27 @@ export class ChunkingService {
                     } else if (item.isFile()) {
                         // 只包含代码文件
                         const ext = path.extname(item.name).toLowerCase();
-                        const codeExtensions = ['.py', '.js', '.ts', '.java', '.cpp', '.c', '.go', '.rs', '.php', '.rb', '.cs', '.css', '.html', '.json', '.xml', '.yaml', '.yml', '.md'];
-                        
+                        const codeExtensions = [
+                            '.py',
+                            '.js',
+                            '.ts',
+                            '.java',
+                            '.cpp',
+                            '.c',
+                            '.go',
+                            '.rs',
+                            '.php',
+                            '.rb',
+                            '.cs',
+                            '.css',
+                            '.html',
+                            '.json',
+                            '.xml',
+                            '.yaml',
+                            '.yml',
+                            '.md',
+                        ];
+
                         if (codeExtensions.includes(ext)) {
                             files.push(relativePath);
                         }
@@ -491,21 +522,24 @@ export class ChunkingService {
      * 处理特定文件列表
      */
     private async processSpecificFiles(
-        userId: string, 
-        deviceId: string, 
-        workspacePath: string, 
-        token: string, 
+        userId: string,
+        deviceId: string,
+        workspacePath: string,
+        token: string,
         filesToProcess: string[]
     ): Promise<boolean> {
         try {
-    
-            
             // 这里可以调用 code-chunker 的特定文件处理方法
             // 如果 code-chunker 没有提供此方法，可以使用完整处理但只标记特定文件
-            
+
             // 临时解决方案：仍然处理所有文件，但索引缓存会记录具体的文件状态
-            const success = await codeChunker.processWorkspace(userId, deviceId, workspacePath, token);
-            
+            const success = await codeChunker.processWorkspace(
+                userId,
+                deviceId,
+                workspacePath,
+                token
+            );
+
             return success;
         } catch (error) {
             console.error('[ChunkingService] 处理特定文件失败:', error);
@@ -520,35 +554,18 @@ export class ChunkingService {
         if (!this.indexCacheService) {
             return null;
         }
-        
+
         return this.indexCacheService.getCacheStats();
-    }
-
-    /**
-     * 手动清理缓存
-     */
-    async manualCleanupCache(): Promise<{ removed: number; size: string } | null> {
-        if (!this.indexCacheService) {
-            return null;
-        }
-        
-        return this.indexCacheService.manualCleanup();
-    }
-
-    /**
-     * 销毁缓存服务
-     */
-    async destroyCacheService(): Promise<void> {
-        if (this.indexCacheService) {
-            await this.indexCacheService.destroy();
-            this.indexCacheService = null;
-        }
     }
 
     /**
      * 清除工作区索引缓存
      */
-    async clearWorkspaceIndexCache(workspacePath: string, userId: string, deviceId: string): Promise<void> {
+    async clearWorkspaceIndexCache(
+        workspacePath: string,
+        userId: string,
+        deviceId: string
+    ): Promise<void> {
         if (this.indexCacheService) {
             await this.indexCacheService.clearWorkspaceCache(workspacePath, userId, deviceId);
         }
@@ -578,7 +595,9 @@ export class ChunkingService {
             const workspacePath = workspaceFolder.uri.fsPath;
 
             // 获取chunker实例
-            const chunkerInstance = activeChunkerInstance || codeChunker.getChunkerInstance(userId, deviceId, workspacePath, token);
+            const chunkerInstance =
+                activeChunkerInstance ||
+                codeChunker.getChunkerInstance(userId, deviceId, workspacePath, token);
 
             if (!chunkerInstance.vectorManager || !chunkerInstance.vectorManager.embeddingClient) {
                 vscode.window.showErrorMessage('EmbeddingClient未初始化，无法生成网络性能报告');
@@ -586,9 +605,9 @@ export class ChunkingService {
             }
 
             // 调用embeddingClient的网络性能报告方法
-            const report = chunkerInstance.vectorManager.embeddingClient.generateNetworkPerformanceReport();
+            const report =
+                chunkerInstance.vectorManager.embeddingClient.generateNetworkPerformanceReport();
             return report;
-
         } catch (error) {
             console.error('[ChunkingService] 生成网络性能报告失败:', error);
             throw error;
@@ -619,7 +638,9 @@ export class ChunkingService {
             const workspacePath = workspaceFolder.uri.fsPath;
 
             // 获取chunker实例
-            const chunkerInstance = activeChunkerInstance || codeChunker.getChunkerInstance(userId, deviceId, workspacePath, token);
+            const chunkerInstance =
+                activeChunkerInstance ||
+                codeChunker.getChunkerInstance(userId, deviceId, workspacePath, token);
 
             if (!chunkerInstance.vectorManager || !chunkerInstance.vectorManager.embeddingClient) {
                 vscode.window.showErrorMessage('EmbeddingClient未初始化，无法清除网络性能数据');
@@ -628,10 +649,83 @@ export class ChunkingService {
 
             // 调用embeddingClient的清除网络性能数据方法
             chunkerInstance.vectorManager.embeddingClient.clearNetworkPerformanceData();
-
         } catch (error) {
             console.error('[ChunkingService] 清除网络性能数据失败:', error);
             throw error;
         }
     }
-} 
+
+    /**
+     * 检查索引完成状态
+     */
+    async checkIndexStatus(context?: vscode.ExtensionContext): Promise<{
+        isCompleted: boolean;
+        indexedFiles: number;
+        totalFiles: number;
+        completionPercentage: number;
+        lastUpdateTime: Date | null;
+    } | null> {
+        try {
+            const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+            if (!workspaceFolder) {
+                return null;
+            }
+
+            const config = vscode.workspace.getConfiguration('codeChunker');
+            const userId = config.get<string>('userId');
+            const deviceId = config.get<string>('deviceId');
+
+            if (!userId || !deviceId) {
+                return null;
+            }
+
+            // 初始化索引缓存服务
+            if (!this.indexCacheService && context) {
+                this.initializeIndexCache(context);
+            }
+
+            if (!this.indexCacheService) {
+                return null;
+            }
+
+            const workspacePath = workspaceFolder.uri.fsPath;
+            const ignorePatterns = config.get<string[]>('ignorePatterns') || [];
+
+            // 扫描工作区获取所有文件
+            const allFiles = await this.scanWorkspaceFiles(workspacePath, ignorePatterns);
+
+            // 检查哪些文件已经索引过
+            const { indexed, unindexed } = await this.indexCacheService.filterUnindexedFiles(
+                allFiles,
+                workspacePath,
+                userId,
+                deviceId
+            );
+
+            const totalFiles = allFiles.length;
+            const indexedFiles = indexed.length;
+            const completionPercentage = totalFiles > 0 ? Math.round((indexedFiles / totalFiles) * 100) : 0;
+            const isCompleted = totalFiles > 0 && unindexed.length === 0;
+
+            // 获取最后更新时间（从缓存统计中获取）
+            let lastUpdateTime: Date | null = null;
+            try {
+                const stats = await this.indexCacheService.getCacheStats();
+                lastUpdateTime = stats?.newestRecord || null;
+            } catch (error) {
+                console.warn('[ChunkingService] 获取缓存统计失败:', error);
+            }
+
+            return {
+                isCompleted,
+                indexedFiles,
+                totalFiles,
+                completionPercentage,
+                lastUpdateTime,
+            };
+        } catch (error) {
+            console.error('[ChunkingService] 检查索引状态失败:', error);
+            throw error;
+        }
+    }
+}

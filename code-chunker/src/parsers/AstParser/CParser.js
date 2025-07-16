@@ -19,13 +19,13 @@ class CParser extends BaseParser {
             comment: ['comment'],
             type: ['type_definition'],
             function: ['function_definition'],
-            variable: ['declaration']
+            variable: ['declaration'],
         };
-        
+
         // 延迟初始化tree-sitter C解析器
         this.parser = null;
         this.languageAvailable = false;
-        
+
         // 10KB限制（留1KB余量）
         this.maxChunkSize = 9 * 1024;
     }
@@ -44,16 +44,17 @@ class CParser extends BaseParser {
                 comment: ['comment'],
                 type: ['type_definition'],
                 function: ['function_definition'],
-                variable: ['declaration']
-            }
+                variable: ['declaration'],
+            },
         };
     }
 
     _ensureParserInitialized() {
         if (!this.parser) {
             this.parser = new Parser();
-            
-            if (C && C.language) { // C直接就是语言对象，有language属性
+
+            if (C && C.language) {
+                // C直接就是语言对象，有language属性
                 try {
                     this.parser.setLanguage(C);
                     this.languageAvailable = true;
@@ -66,7 +67,7 @@ class CParser extends BaseParser {
                 this.languageAvailable = false;
             }
         }
-        
+
         if (!this.languageAvailable) {
             throw new Error('C language parser not available');
         }
@@ -77,15 +78,11 @@ class CParser extends BaseParser {
         return buffer.slice(startByte, endByte).toString('utf-8');
     }
 
-    async parse(content, filePath = null) {
-        return this.parseContent(content, filePath);
-    }
-
     async parseContent(content, filePath = null) {
         try {
             // 确保解析器已初始化
             this._ensureParserInitialized();
-            
+
             if (!content || typeof content !== 'string') {
                 console.warn(`Invalid content for C parsing in file: ${filePath || 'unknown'}`);
                 return [];
@@ -97,14 +94,18 @@ class CParser extends BaseParser {
             }
 
             if (content.length > 10 * 1024 * 1024) {
-                console.warn(`Content too large for C parsing in file: ${filePath || 'unknown'} (${content.length} bytes)`);
+                console.warn(
+                    `Content too large for C parsing in file: ${filePath || 'unknown'} (${content.length} bytes)`
+                );
                 return [];
             }
 
             let cleanContent = content.replace(/\0/g, '');
-            
+
             if (cleanContent.length > 1024 * 1024) {
-                console.warn(`Large C file detected: ${filePath || 'unknown'} (${cleanContent.length} bytes), truncating for parsing`);
+                console.warn(
+                    `Large C file detected: ${filePath || 'unknown'} (${cleanContent.length} bytes), truncating for parsing`
+                );
                 cleanContent = cleanContent.substring(0, 1024 * 1024);
             }
 
@@ -112,30 +113,38 @@ class CParser extends BaseParser {
             try {
                 tree = this.parser.parse(cleanContent);
             } catch (parseError) {
-                console.warn(`Direct parsing failed for ${filePath || 'unknown'}: ${parseError.message}`);
-                
+                console.warn(
+                    `Direct parsing failed for ${filePath || 'unknown'}: ${parseError.message}`
+                );
+
                 cleanContent = cleanContent
                     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
                     .replace(/\r\n/g, '\n')
                     .replace(/\r/g, '\n');
-                
+
                 try {
                     tree = this.parser.parse(cleanContent);
                 } catch (secondError) {
-                    console.warn(`Second parsing attempt failed for ${filePath || 'unknown'}: ${secondError.message}`);
-                    
+                    console.warn(
+                        `Second parsing attempt failed for ${filePath || 'unknown'}: ${secondError.message}`
+                    );
+
                     const lines = cleanContent.split('\n').slice(0, 100);
                     const truncatedContent = lines.join('\n');
                     try {
                         tree = this.parser.parse(truncatedContent);
-                        console.warn(`Successfully parsed truncated version of ${filePath || 'unknown'} (first 100 lines)`);
+                        console.warn(
+                            `Successfully parsed truncated version of ${filePath || 'unknown'} (first 100 lines)`
+                        );
                     } catch (finalError) {
-                        console.error(`All parsing attempts failed for ${filePath || 'unknown'}: ${finalError.message}`);
+                        console.error(
+                            `All parsing attempts failed for ${filePath || 'unknown'}: ${finalError.message}`
+                        );
                         return [];
                     }
                 }
             }
-            
+
             if (!tree || !tree.rootNode) {
                 console.warn(`Failed to parse AST for file: ${filePath || 'unknown'}`);
                 return [];
@@ -152,7 +161,15 @@ class CParser extends BaseParser {
             const variables = this._extractVariables(tree, cleanContent);
             const other = this._extractOther(tree, cleanContent);
 
-            const allChunks = [...includes, ...macros, ...comments, ...types, ...functions, ...variables, ...other];
+            const allChunks = [
+                ...includes,
+                ...macros,
+                ...comments,
+                ...types,
+                ...functions,
+                ...variables,
+                ...other,
+            ];
             const mergedChunks = this._mergeAdjacentChunks(allChunks);
 
             return mergedChunks.map(chunk => ({
@@ -164,9 +181,8 @@ class CParser extends BaseParser {
                 content: chunk.content,
                 parser: 'c_parser',
                 type: chunk.type,
-                ...(chunk.name && { name: chunk.name })
+                ...(chunk.name && { name: chunk.name }),
             }));
-
         } catch (error) {
             console.error(`Error parsing C content in file: ${filePath || 'unknown'}:`, error);
             return [];
@@ -175,14 +191,14 @@ class CParser extends BaseParser {
 
     _extractIncludes(tree, code) {
         const includes = [];
-        this._traverseNodes(tree.rootNode, (node) => {
+        this._traverseNodes(tree.rootNode, node => {
             if (this.nodeTypes.include.includes(node.type)) {
                 const nodeCode = this._extractNodeCode(code, node.startIndex, node.endIndex);
                 includes.push({
                     type: 'include',
                     content: nodeCode,
                     startLine: node.startPosition.row + 1,
-                    endLine: node.endPosition.row + 1
+                    endLine: node.endPosition.row + 1,
                 });
             }
         });
@@ -191,17 +207,17 @@ class CParser extends BaseParser {
 
     _extractMacros(tree, code) {
         const macros = [];
-        this._traverseNodes(tree.rootNode, (node) => {
+        this._traverseNodes(tree.rootNode, node => {
             if (this.nodeTypes.macro.includes(node.type)) {
                 const macroName = this._getDefinitionName(node);
                 const nodeCode = this._extractNodeCode(code, node.startIndex, node.endIndex);
-                
+
                 macros.push({
                     type: 'macro',
                     name: macroName,
                     content: nodeCode,
                     startLine: node.startPosition.row + 1,
-                    endLine: node.endPosition.row + 1
+                    endLine: node.endPosition.row + 1,
                 });
             }
         });
@@ -210,15 +226,15 @@ class CParser extends BaseParser {
 
     _extractComments(tree, code) {
         const comments = [];
-        this._traverseNodes(tree.rootNode, (node) => {
+        this._traverseNodes(tree.rootNode, node => {
             if (this.nodeTypes.comment.includes(node.type)) {
                 const nodeCode = this._extractNodeCode(code, node.startIndex, node.endIndex);
-                
+
                 comments.push({
                     type: 'comment',
                     content: nodeCode,
                     startLine: node.startPosition.row + 1,
-                    endLine: node.endPosition.row + 1
+                    endLine: node.endPosition.row + 1,
                 });
             }
         });
@@ -227,17 +243,17 @@ class CParser extends BaseParser {
 
     _extractTypes(tree, code) {
         const types = [];
-        this._traverseNodes(tree.rootNode, (node) => {
+        this._traverseNodes(tree.rootNode, node => {
             if (this.nodeTypes.type.includes(node.type)) {
                 const typeName = this._getDefinitionName(node);
                 const nodeCode = this._extractNodeCode(code, node.startIndex, node.endIndex);
-                
+
                 types.push({
                     type: 'type',
                     name: typeName,
                     content: nodeCode,
                     startLine: node.startPosition.row + 1,
-                    endLine: node.endPosition.row + 1
+                    endLine: node.endPosition.row + 1,
                 });
             }
         });
@@ -246,17 +262,17 @@ class CParser extends BaseParser {
 
     _extractFunctions(tree, code) {
         const functions = [];
-        this._traverseNodes(tree.rootNode, (node) => {
+        this._traverseNodes(tree.rootNode, node => {
             if (this.nodeTypes.function.includes(node.type)) {
                 const functionName = this._getDefinitionName(node);
                 const nodeCode = this._extractNodeCode(code, node.startIndex, node.endIndex);
-                
+
                 functions.push({
                     type: 'function',
                     name: functionName,
                     content: nodeCode,
                     startLine: node.startPosition.row + 1,
-                    endLine: node.endPosition.row + 1
+                    endLine: node.endPosition.row + 1,
                 });
             }
         });
@@ -265,17 +281,17 @@ class CParser extends BaseParser {
 
     _extractVariables(tree, code) {
         const variables = [];
-        this._traverseNodes(tree.rootNode, (node) => {
+        this._traverseNodes(tree.rootNode, node => {
             if (this.nodeTypes.variable.includes(node.type)) {
                 const variableName = this._getDefinitionName(node);
                 const nodeCode = this._extractNodeCode(code, node.startIndex, node.endIndex);
-                
+
                 variables.push({
                     type: 'variable',
                     name: variableName,
                     content: nodeCode,
                     startLine: node.startPosition.row + 1,
-                    endLine: node.endPosition.row + 1
+                    endLine: node.endPosition.row + 1,
                 });
             }
         });
@@ -285,16 +301,16 @@ class CParser extends BaseParser {
     _extractOther(tree, code) {
         const other = [];
         const allDefinedTypes = Object.values(this.nodeTypes).flat();
-        
+
         for (const child of tree.rootNode.children) {
             if (!allDefinedTypes.includes(child.type)) {
                 const nodeCode = this._extractNodeCode(code, child.startIndex, child.endIndex);
-                
+
                 other.push({
                     type: 'other',
                     content: nodeCode,
                     startLine: child.startPosition.row + 1,
-                    endLine: child.endPosition.row + 1
+                    endLine: child.endPosition.row + 1,
                 });
             }
         }
@@ -317,7 +333,7 @@ class CParser extends BaseParser {
 
         for (let i = 1; i < sortedChunks.length; i++) {
             const next = sortedChunks[i];
-            
+
             if (current.type === next.type && next.startLine <= current.endLine + 2) {
                 let content = current.content;
                 if (next.startLine > current.endLine) {
@@ -331,14 +347,14 @@ class CParser extends BaseParser {
                     startLine: current.startLine,
                     endLine: next.endLine,
                     ...(current.name && { name: current.name }),
-                    ...(next.name && !current.name && { name: next.name })
+                    ...(next.name && !current.name && { name: next.name }),
                 };
             } else {
                 merged.push(current);
                 current = next;
             }
         }
-        
+
         merged.push(current);
         return merged;
     }
@@ -354,7 +370,7 @@ class CParser extends BaseParser {
             identifiers.push(node.text);
             return;
         }
-        
+
         for (const child of node.children) {
             this._findIdentifiers(child, identifiers);
             if (identifiers.length > 0) break;
@@ -367,4 +383,4 @@ class CParser extends BaseParser {
     }
 }
 
-module.exports = CParser; 
+module.exports = CParser;

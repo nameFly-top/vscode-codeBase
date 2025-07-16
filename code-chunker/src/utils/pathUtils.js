@@ -77,11 +77,11 @@ class PathUtils {
      */
     static getParentOfDir(dirPath) {
         if (!dirPath || this.isCurrentDir(dirPath)) return '';
-        
+
         // 移除末尾的斜杠
         const cleanPath = dirPath.replace(/\/$/, '');
         if (!cleanPath || cleanPath === '.') return '';
-        
+
         const parentPath = this.normalizePath(path.dirname(cleanPath));
         return this.normalizeDirPath(parentPath);
     }

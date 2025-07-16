@@ -4,7 +4,7 @@ class ProgressTracker {
     constructor() {
         this.chunks = new Map();
         this.fileProgress = new Map();
-        
+
         // 新增：文件级别跟踪
         this.fileStatus = new Map(); // filePath -> 'pending'|'processing'|'completed'|'failed'
         this.totalFiles = 0;
@@ -29,11 +29,11 @@ class ProgressTracker {
                 startTime: Date.now(),
                 endTime: null,
                 retries: 0,
-                metadata: metadata
+                metadata: metadata,
             };
 
             this.chunks.set(chunkId, chunkInfo);
-            
+
             // 初始化文件进度
             const filePath = metadata.filePath;
             if (!this.fileProgress.has(filePath)) {
@@ -43,10 +43,10 @@ class ProgressTracker {
                     processing: 0,
                     completed: 0,
                     failed: 0,
-                    language: chunkInfo.language
+                    language: chunkInfo.language,
                 });
             }
-            
+
             const fileStats = this.fileProgress.get(filePath);
             fileStats.total++;
             fileStats.pending++;
@@ -80,7 +80,7 @@ class ProgressTracker {
             '.xml': 'xml',
             '.yaml': 'yaml',
             '.yml': 'yaml',
-            '.md': 'markdown'
+            '.md': 'markdown',
         };
         return languageMap[ext] || 'unknown';
     }
@@ -112,7 +112,7 @@ class ProgressTracker {
             '.xml': 'xml_parser',
             '.yaml': 'yaml_parser',
             '.yml': 'yaml_parser',
-            '.md': 'markdown_parser'
+            '.md': 'markdown_parser',
         };
         return parserMap[ext] || 'default_parser';
     }
@@ -120,32 +120,105 @@ class ProgressTracker {
     updateChunkStatus(chunkId, status) {
         const chunk = this.chunks.get(chunkId);
         if (!chunk) {
-            console.warn(`Chunk ${chunkId} not found in progress tracker`);
+            // 检查是否是分割代码块，如果是，尝试处理原始代码块
+            if (chunkId.includes('_part_')) {
+                const originalChunkId = chunkId.replace(/_part_\d+$/, '');
+                const originalChunk = this.chunks.get(originalChunkId);
+                if (originalChunk) {
+                    // 找到原始代码块，更新其状态
+                    this._updateSplitChunkStatus(originalChunkId, chunkId, status);
+                    return;
+                }
+            }
+            
+            // 对于其他情况，使用调试级别的日志而不是警告
+            console.debug(`Chunk ${chunkId} not found in progress tracker (可能是分割代码块)`);
             return;
         }
 
         const oldStatus = chunk.status;
         chunk.status = status;
         chunk.endTime = ['completed', 'failed'].includes(status) ? Date.now() : null;
-        
+
         if (status === 'processing') {
             chunk.retries++;
         }
-        
+
         // 更新文件进度
         const filePath = chunk.filePath;
         const fileStats = this.fileProgress.get(filePath);
-        
+
+        if (fileStats) {
         // 减少旧状态的计数
         if (oldStatus) {
             fileStats[oldStatus]--;
         }
-        
+
         // 增加新状态的计数
         fileStats[status]++;
-        
+        }
+
         // 新增：自动更新文件级别的状态
         this._updateFileStatusByChunks();
+    }
+
+    /**
+     * 处理分割代码块的状态更新
+     */
+    _updateSplitChunkStatus(originalChunkId, splitChunkId, status) {
+        const originalChunk = this.chunks.get(originalChunkId);
+        if (!originalChunk) {
+            return;
+        }
+
+        // 初始化分割代码块跟踪
+        if (!originalChunk.splitChunks) {
+            originalChunk.splitChunks = new Map();
+        }
+
+        // 记录分割代码块的状态
+        originalChunk.splitChunks.set(splitChunkId, status);
+
+        // 检查所有分割代码块的状态
+        const splitStatuses = Array.from(originalChunk.splitChunks.values());
+        const completedCount = splitStatuses.filter(s => s === 'completed').length;
+        const failedCount = splitStatuses.filter(s => s === 'failed').length;
+        const totalSplitChunks = splitStatuses.length;
+
+        // 根据分割代码块的状态更新原始代码块的状态
+        let newOriginalStatus = originalChunk.status;
+
+        if (status === 'processing' && originalChunk.status === 'pending') {
+            newOriginalStatus = 'processing';
+        } else if (completedCount === totalSplitChunks) {
+            // 所有分割部分都完成了
+            newOriginalStatus = 'completed';
+        } else if (failedCount > 0 && (completedCount + failedCount) === totalSplitChunks) {
+            // 有失败的部分，且所有部分都处理完了
+            newOriginalStatus = 'failed';
+        }
+
+        // 更新原始代码块状态
+        if (newOriginalStatus !== originalChunk.status) {
+            console.log(`🔄 更新原始代码块状态: ${originalChunkId} ${originalChunk.status} -> ${newOriginalStatus} (分割进度: ${completedCount}/${totalSplitChunks})`);
+            
+            const oldStatus = originalChunk.status;
+            originalChunk.status = newOriginalStatus;
+            originalChunk.endTime = ['completed', 'failed'].includes(newOriginalStatus) ? Date.now() : null;
+
+            // 更新文件进度统计
+            const filePath = originalChunk.filePath;
+            const fileStats = this.fileProgress.get(filePath);
+            if (fileStats) {
+                if (oldStatus) {
+                    fileStats[oldStatus]--;
+                }
+                fileStats[newOriginalStatus]++;
+            }
+
+            // 更新文件级别的状态
+            this._updateFileStatusByChunks();
+        }
     }
 
     getOverallProgress() {
@@ -178,7 +251,7 @@ class ProgressTracker {
             completedChunks,
             failedChunks,
             totalChunks,
-            successRate: totalChunks > 0 ? (completedChunks / totalChunks) * 100 : 0
+            successRate: totalChunks > 0 ? (completedChunks / totalChunks) * 100 : 0,
         };
     }
 
@@ -193,7 +266,7 @@ class ProgressTracker {
                 completed: stats.completed,
                 failed: stats.failed,
                 total: stats.total,
-                successRate: stats.total > 0 ? (stats.completed / stats.total) * 100 : 0
+                successRate: stats.total > 0 ? (stats.completed / stats.total) * 100 : 0,
             });
         }
         return summary;
@@ -224,7 +297,7 @@ class ProgressTracker {
     }
 
     // 新增：文件级别的进度跟踪方法
-    
+
     /**
      * 注册文件到进度跟踪器
      * @param {string} filePath - 文件路径
@@ -253,7 +326,7 @@ class ProgressTracker {
      */
     updateFileStatus(filePath, status) {
         const oldStatus = this.fileStatus.get(filePath);
-        
+
         if (oldStatus) {
             // 减少旧状态的计数
             switch (oldStatus) {
@@ -268,10 +341,10 @@ class ProgressTracker {
                     break;
             }
         }
-        
+
         // 设置新状态
         this.fileStatus.set(filePath, status);
-        
+
         // 增加新状态的计数
         switch (status) {
             case 'processing':
@@ -296,8 +369,10 @@ class ProgressTracker {
             completedFiles: this.completedFiles,
             processingFiles: this.processingFiles,
             failedFiles: this.failedFiles,
-            pendingFiles: this.totalFiles - this.completedFiles - this.processingFiles - this.failedFiles,
-            progressPercentage: this.totalFiles > 0 ? (this.completedFiles / this.totalFiles) * 100 : 0
+            pendingFiles:
+                this.totalFiles - this.completedFiles - this.processingFiles - this.failedFiles,
+            progressPercentage:
+                this.totalFiles > 0 ? (this.completedFiles / this.totalFiles) * 100 : 0,
         };
     }
 
@@ -319,7 +394,7 @@ class ProgressTracker {
             details.push({
                 filePath,
                 status,
-                language: this._detectLanguage(filePath)
+                language: this._detectLanguage(filePath),
             });
         }
         return details;
@@ -331,7 +406,7 @@ class ProgressTracker {
      */
     _updateFileStatusByChunks() {
         const fileChunkStatus = new Map();
-        
+
         // 统计每个文件的chunk状态
         for (const chunk of this.chunks.values()) {
             const filePath = chunk.filePath;
@@ -340,13 +415,13 @@ class ProgressTracker {
                     total: 0,
                     completed: 0,
                     failed: 0,
-                    processing: 0
+                    processing: 0,
                 });
             }
-            
+
             const fileStats = fileChunkStatus.get(filePath);
             fileStats.total++;
-            
+
             switch (chunk.status) {
                 case 'completed':
                     fileStats.completed++;
@@ -359,11 +434,11 @@ class ProgressTracker {
                     break;
             }
         }
-        
+
         // 根据chunk状态更新文件状态
         for (const [filePath, stats] of fileChunkStatus.entries()) {
             let newFileStatus = 'pending';
-            
+
             if (stats.processing > 0) {
                 newFileStatus = 'processing';
             } else if (stats.completed === stats.total) {
@@ -371,7 +446,7 @@ class ProgressTracker {
             } else if (stats.failed > 0 && stats.completed + stats.failed === stats.total) {
                 newFileStatus = 'failed';
             }
-            
+
             const currentStatus = this.fileStatus.get(filePath);
             if (currentStatus !== newFileStatus) {
                 this.updateFileStatus(filePath, newFileStatus);
@@ -380,4 +455,4 @@ class ProgressTracker {
     }
 }
 
-module.exports = ProgressTracker; 
+module.exports = ProgressTracker;

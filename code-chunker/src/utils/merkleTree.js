@@ -22,7 +22,8 @@ class MerkleTree {
      * @returns {string} - 组合后的哈希值
      */
     combineHashes(hash1, hash2) {
-        return crypto.createHash('sha256')
+        return crypto
+            .createHash('sha256')
             .update(hash1 + hash2)
             .digest('hex');
     }
@@ -36,16 +37,6 @@ class MerkleTree {
         // 清空现有数据
         this.leaves = [];
         this.tree = [];
-
-        // 处理空数组情况
-        if (!fileHashes || fileHashes.length === 0) {
-            const emptyHash = this.hashFile('');
-            return {
-                root: emptyHash,
-                rootHash: emptyHash,
-                tree: [[emptyHash]]
-            };
-        }
 
         // 直接使用已计算的哈希值作为叶节点
         this.leaves = [...fileHashes];
@@ -67,11 +58,9 @@ class MerkleTree {
             currentLevel = nextLevel;
         }
 
-        const rootHash = this.tree[this.tree.length - 1][0];
         return {
-            root: rootHash,
-            rootHash: rootHash,
-            tree: this.tree
+            rootHash: this.tree[this.tree.length - 1][0],
+            tree: this.tree,
         };
     }
 
@@ -99,11 +88,11 @@ class MerkleTree {
         for (let level = 0; level < this.tree.length - 1; level++) {
             const isLeft = currentIndex % 2 === 0;
             const siblingIndex = isLeft ? currentIndex + 1 : currentIndex - 1;
-            
+
             if (siblingIndex < this.tree[level].length) {
                 proof.push({
                     hash: this.tree[level][siblingIndex],
-                    isLeft: !isLeft
+                    isLeft: !isLeft,
                 });
             }
 
@@ -124,13 +113,13 @@ class MerkleTree {
         let hash = this.hashFile(content);
 
         for (const { hash: siblingHash, isLeft } of proof) {
-            hash = isLeft ? 
-                this.combineHashes(siblingHash, hash) : 
-                this.combineHashes(hash, siblingHash);
+            hash = isLeft
+                ? this.combineHashes(siblingHash, hash)
+                : this.combineHashes(hash, siblingHash);
         }
 
         return hash === rootHash;
     }
 }
 
-module.exports = MerkleTree; 
+module.exports = MerkleTree;

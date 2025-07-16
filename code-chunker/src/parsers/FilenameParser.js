@@ -8,7 +8,7 @@ class FilenameParser extends BaseParser {
             const fs = require('fs').promises;
             content = await fs.readFile(filePath, 'utf-8');
         }
-        
+
         // 从文件扩展名推断语言
         const ext = path.extname(filePath);
         const langMapping = this.config.languageMapping || {
@@ -17,14 +17,14 @@ class FilenameParser extends BaseParser {
             '.ts': 'typescript',
             '.java': 'java',
             '.cpp': 'cpp',
-            '.c': 'c'
+            '.c': 'c',
         };
         const language = langMapping[ext] || 'unknown';
         const relativePath = path.basename(filePath);
         const lineCount = content.split('\n').length;
-        
+
         return [this._createChunk(content, 1, lineCount, relativePath, language, 'file')];
     }
 }
 
-module.exports = FilenameParser; 
+module.exports = FilenameParser;

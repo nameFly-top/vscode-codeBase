@@ -10,29 +10,61 @@ class IntelligentFileFilter {
         // 🎯 有价值的源代码文件扩展名
         this.valuableExtensions = new Set([
             // Web前端
-            '.js', '.jsx', '.ts', '.tsx', '.vue', '.svelte',
-            '.css', '.scss', '.sass', '.less', '.styl',
-            '.html', '.htm',
-            
+            '.js',
+            '.jsx',
+            '.ts',
+            '.tsx',
+            '.vue',
+            '.svelte',
+            '.css',
+            '.scss',
+            '.sass',
+            '.less',
+            '.styl',
+            '.html',
+            '.htm',
+
             // 后端语言
-            '.py', '.rb', '.php', '.java', '.c', '.cpp', '.cc', '.cxx',
-            '.cs', '.go', '.rs', '.kt', '.scala', '.clj', '.cljs',
-            '.sh', '.bash', '.zsh', '.ps1',
-            
+            '.py',
+            '.rb',
+            '.php',
+            '.java',
+            '.c',
+            '.cpp',
+            '.cc',
+            '.cxx',
+            '.cs',
+            '.go',
+            '.rs',
+            '.kt',
+            '.scala',
+            '.clj',
+            '.cljs',
+            '.sh',
+            '.bash',
+            '.zsh',
+            '.ps1',
+
             // 移动开发
-            '.swift', '.m', '.mm', '.dart',
-            
+            '.swift',
+            '.m',
+            '.mm',
+            '.dart',
+
             // 数据和配置（选择性）
-            '.sql', '.graphql', '.yaml', '.yml',
-            
+            '.sql',
+            '.graphql',
+            '.yaml',
+            '.yml',
+
             // 脚本和自动化
-            '.lua', '.pl', '.r'
+            '.lua',
+            '.pl',
+            '.r',
         ]);
 
         // 🚫 应该处理但需要特别注意的文件（通常是用户配置）
-        this.conditionalExtensions = new Set([
-            '.json', '.xml', '.toml', '.ini', '.conf'
-        ]);
+        this.conditionalExtensions = new Set(['.json', '.xml', '.toml', '.ini', '.conf']);
 
         // 🎯 有价值的文件名模式（即使扩展名不在列表中）
         this.valuableFilePatterns = [
@@ -45,29 +77,66 @@ class IntelligentFileFilter {
             /^\.prettierrc$/i,
             /^webpack\.config\./i,
             /^rollup\.config\./i,
-            /^vite\.config\./i
+            /^vite\.config\./i,
         ];
 
         // 🚫 明确排除的目录（性能优化）
         this.excludedDirectories = new Set([
-            'node_modules', 'bower_components', 'vendor', 'packages',
-            '.git', '.svn', '.hg', 'CVS',
-            'dist', 'build', 'out', 'output', 'public', 'bin', 'obj',
-            'coverage', '.nyc_output', 'htmlcov',
-            '__pycache__', '.pytest_cache', '.tox', 'venv', 'env', '.env',
-            '.cache', '.vector-cache', 'tmp', 'temp', '.tmp',
-            '.vscode', '.idea', '.vs'
+            'node_modules',
+            'bower_components',
+            'vendor',
+            'packages',
+            '.git',
+            '.svn',
+            '.hg',
+            'CVS',
+            'dist',
+            'build',
+            'out',
+            'output',
+            'public',
+            'bin',
+            'obj',
+            'coverage',
+            '.nyc_output',
+            'htmlcov',
+            '__pycache__',
+            '.pytest_cache',
+            '.tox',
+            'venv',
+            'env',
+            '.env',
+            '.cache',
+            '.vector-cache',
+            'tmp',
+            'temp',
+            '.tmp',
+            '.vscode',
+            '.idea',
+            '.vs',
         ]);
 
         // 🚫 明确排除的文件名
         this.excludedFileNames = new Set([
-            '.ds_store', 'thumbs.db', 'desktop.ini',
-            'license', 'license.txt', 'license.md',
-            'changelog', 'changelog.txt', 'changelog.md',
-            'readme', 'readme.txt', 'readme.md',
-            'contributing', 'contributing.md',
-            'code_of_conduct.md', 'security.md',
-            'authors', 'contributors', 'maintainers'
+            '.ds_store',
+            'thumbs.db',
+            'desktop.ini',
+            'license',
+            'license.txt',
+            'license.md',
+            'changelog',
+            'changelog.txt',
+            'changelog.md',
+            'readme',
+            'readme.txt',
+            'readme.md',
+            'contributing',
+            'contributing.md',
+            'code_of_conduct.md',
+            'security.md',
+            'authors',
+            'contributors',
+            'maintainers',
         ]);
     }
 
@@ -82,8 +151,7 @@ class IntelligentFileFilter {
         const nameWithoutExt = path.basename(filePath, ext).toLowerCase();
 
         // 1. 检查是否在排除的文件名列表中
-        if (this.excludedFileNames.has(fileName) || 
-            this.excludedFileNames.has(nameWithoutExt)) {
+        if (this.excludedFileNames.has(fileName) || this.excludedFileNames.has(nameWithoutExt)) {
             return false;
         }
 
@@ -125,7 +193,7 @@ class IntelligentFileFilter {
      */
     _isValuableConfigFile(filePath) {
         const fileName = path.basename(filePath).toLowerCase();
-        
+
         // 项目级配置文件通常有价值
         const valuableConfigPatterns = [
             /^package\.json$/,
@@ -141,7 +209,7 @@ class IntelligentFileFilter {
             /^.*\.config\.(js|ts|json)$/,
             /^.*rc\.(js|ts|json|yaml|yml)$/,
             /^tsconfig\.json$/,
-            /^jsconfig\.json$/
+            /^jsconfig\.json$/,
         ];
 
         return valuableConfigPatterns.some(pattern => pattern.test(fileName));
@@ -165,7 +233,19 @@ class IntelligentFileFilter {
         const fileName = path.basename(filePath);
 
         // 核心源代码文件最高分
-        const coreLanguages = ['.js', '.jsx', '.ts', '.tsx', '.py', '.java', '.c', '.cpp', '.cs', '.go', '.rs'];
+        const coreLanguages = [
+            '.js',
+            '.jsx',
+            '.ts',
+            '.tsx',
+            '.py',
+            '.java',
+            '.c',
+            '.cpp',
+            '.cs',
+            '.go',
+            '.rs',
+        ];
         if (coreLanguages.includes(ext)) {
             return 100;
         }
@@ -208,7 +288,7 @@ class IntelligentFileFilter {
             valuable: 0,
             excluded: 0,
             byType: {},
-            suggestions: []
+            suggestions: [],
         };
 
         for (const filePath of filePaths) {
@@ -226,12 +306,15 @@ class IntelligentFileFilter {
             }
             analysis.byType[ext].count++;
             analysis.byType[ext].totalScore += score;
-            analysis.byType[ext].avgScore = analysis.byType[ext].totalScore / analysis.byType[ext].count;
+            analysis.byType[ext].avgScore =
+                analysis.byType[ext].totalScore / analysis.byType[ext].count;
         }
 
         // 生成建议
         const reductionRate = ((analysis.excluded / analysis.total) * 100).toFixed(1);
-        analysis.suggestions.push(`可以跳过 ${analysis.excluded} 个文件 (${reductionRate}%)，专注处理 ${analysis.valuable} 个有价值的文件`);
+        analysis.suggestions.push(
+            `可以跳过 ${analysis.excluded} 个文件 (${reductionRate}%)，专注处理 ${analysis.valuable} 个有价值的文件`
+        );
 
         if (analysis.excluded > analysis.valuable) {
             analysis.suggestions.push('🎯 建议：启用智能文件筛选可以显著提升处理效率');
@@ -241,4 +324,4 @@ class IntelligentFileFilter {
     }
 }
 
-module.exports = IntelligentFileFilter; 
+module.exports = IntelligentFileFilter;

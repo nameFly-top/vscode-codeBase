@@ -20,18 +20,18 @@ class ReadlineParser extends BaseParser {
     _detectLanguage(filePath) {
         const ext = filePath.split('.').pop()?.toLowerCase();
         const languageMap = {
-            'py': 'python',
-            'js': 'javascript',
-            'ts': 'typescript',
-            'cs': 'csharp',
-            'java': 'java',
-            'cpp': 'cpp',
-            'c': 'c',
-            'h': 'c',
-            'hpp': 'cpp'
+            py: 'python',
+            js: 'javascript',
+            ts: 'typescript',
+            cs: 'csharp',
+            java: 'java',
+            cpp: 'cpp',
+            c: 'c',
+            h: 'c',
+            hpp: 'cpp',
         };
         return languageMap[ext] || 'unknown';
     }
 }
 
-module.exports = ReadlineParser; 
+module.exports = ReadlineParser;
